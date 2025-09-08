@@ -1,6 +1,6 @@
 import json,os, sys,math
-
-from shapely import wkt
+from copy import deepcopy
+from shapely import wkt,wkb
 from shapely.geometry import (
      shape,Point,
      LineString, MultiPoint, 
@@ -10,11 +10,15 @@ from shapely.ops import transform
 import pyproj
 from typing import List, Dict
 from random import randrange
+from collections.abc import Iterable
 
 
-from pygeom import logme
+from pygeom import logme, _createFeatureShapely
 
 from datetime import datetime, date
+from _datetime import timedelta
+import numpy as np
+
 
 epsg4326Proj = pyproj.CRS('epsg:4326')
 
@@ -40,9 +44,25 @@ def bearing (p1,p2):
     return Geodesic.WGS84.Inverse( p1.y, p1.x, p2.y, p2.x)['azi1']
 
 def bearingProb(p1,p2,p3):
+    '''
+    Calculate the probability that a bearing is heading to point 3 over point 2 from point 1
+    we normalise to 360 deg, and try to cater for going into the opposite direction 
+    '''
     b1 = bearing(p1,p2)
     b3 = bearing(p1,p3)
-    return b1, b3 , b1 / b3
+    
+    if b1 < 0:
+        b1 += 360.
+    if b3 < 0:
+        b3 += 360.    
+    # we multiply the deduction by 2 to move back to percent of 180 and not 360 as forced above
+    # otherwise an opposed direction will still result in 50%
+    try:
+        bprob = abs(1. -  (abs(b1-b3) / 180.))
+    except:
+        bprob = np.nan
+        
+    return b1, b3 , bprob
 
 
 
@@ -68,17 +88,29 @@ def distanceSpeed2 (dist, ts1, ts2):
     if dist == 0. or td.total_seconds() == 0:
         return 0. , 0. 
     return dist / td.total_seconds() , dist
+
+
+def calcSpeedDistance(dt: timedelta, p1: Point,p2:Point):
+    '''
+    return tsec, speed in m/sec , distance
+    '''
+    tsec  = dt.total_seconds()
+    dist = distance(p1, p2)
+    if dist == 0. or tsec == 0:
+        return 0. , 0. , 0.
+    return tsec , dist, dist / tsec
     
 def point(coords):
     return Point(*coords)
 
-def bufferSpherical(p1, distance_m): 
+def bufferSpherical(geom, distance_m): 
     # this should be less than 10 km, otherwise too much distortion
-    epsg = findEPSGFromZone(lookupUTM(p1.x,p1.y))
+    centroid = geom.centroid
+    epsg = findEPSGFromZone(lookupUTM(centroid.x,centroid.y))
     proj = pyproj.CRS('epsg:{}'.format(epsg))
     try:
         project = pyproj.Transformer.from_crs(epsg4326Proj, proj, always_xy=True).transform
-        p1p = transform(project, p1)
+        p1p = transform(project, geom)
         ppbuffer = p1p.buffer(distance_m)
         project2 = pyproj.Transformer.from_crs(proj,epsg4326Proj, always_xy=True).transform
         buffer =  transform(project2,ppbuffer)
@@ -120,82 +152,9 @@ def _assignRandomId():
     return randrange(1,sys.maxsize)
 
 
-def _exportJsonProperties(props):
-    if props:
-        for k in props:
-            if isinstance(props[k],(list, tuple) ):
-                if len(props[k]) > 0:
-                    if isinstance(props[k][0],(date, datetime) ):
-                        props[k] = ",".join([d.isoformat() for d in props[k]])
-                    else:
-                        props[k] = ",".join([str(d) for d in props[k]])
-                else:
-                    props[k] = ""
-                        
-            elif isinstance(props[k],(date, datetime) ):
-                props[k] = props[k].isoformat()
-    return props
 
 
-def _createFeature(coords, props):
-    return { "type": "Feature",
-        "geometry": {
-          "type": "Polygon",
-          "coordinates": [coords]
-          },
-        "properties": props
-        }
-    
-    
-def _createFeatureShapely(geom, props):
-    '''
-    if props:
-        for k in props:
-            if isinstance(props[k],(list, tuple) ):
-                if len(props[k]) > 0:
-                    if isinstance(props[k][0],(date, datetime) ):
-                        props[k] = ",".join([d.isoformat() for d in props[k]])
-                    else:
-                        props[k] = ",".join([str(d) for d in props[k]])
-                else:
-                    props[k] = ""
-                        
-            elif isinstance(props[k],(date, datetime) ):
-                props[k] = props[k].isoformat()
-    '''
-    
-    return { "type": "Feature",
-        "geometry": geom.__geo_interface__ ,
-        "properties": _exportJsonProperties(props)
-        }
 
-def _createFeaturCollection(feats):
-    return { "type": "FeatureCollection",
-    "features":feats}
-    
-
-    
-def toGeoJson(shapelygeoms : List, props: List):
-    
-    if props:
-        return json.dumps({
-                'type': 'FeatureCollection',
-                'features': [{
-                'type': 'Feature',
-                'properties':p if p else {},
-                'geometry': buffer.__geo_interface__
-            } for buffer, p in zip(shapelygeoms,props)]})
-        
-    else:
-        return json.dumps({
-                'type': 'FeatureCollection',
-                'features': [{
-                'type': 'Feature',
-                'geometry': buffer.__geo_interface__
-            } for buffer in shapelygeoms]})
-    
-    
-    
 
 example = {"command":"set","group":"64520a257926140001438910",
            "detect":"inside",
@@ -256,6 +215,9 @@ class Geom():
         self._name = properties.get("name",int(datetime.utcnow().timestamp()))
         
 
+
+    def clone(self):
+        return Geom(wkb.loads(wkb.dumps(self.geom)),deepcopy(self.properties))
         
     def __repr__(self):
         return "[{},{}]".format(self.geom.wkt,json.dumps(self.properties)) 
@@ -276,28 +238,56 @@ class Geom():
     def inside(self, point):
         return self.geom.contains(point)
     
-        
+    @property
+    def name(self):
+        return self._name
     
     
     
-class Geometries():
+    def attribute(self, key):
+        return self.properties.get(key,None)
+    
+    
+    
+from pygeom.utils import FeaturesStore
+class Geometries(FeaturesStore):
     '''
     Collection of Geoms
     
     '''
-    def __init__(self):
+    def __init__(self, name = "Geometries"):
         self._geoms = []
         self._tree = None
+        self._name = name
+        
+    def setName(self,name):
+        self._name = name
+        
+    def name(self):
+        return self._name 
+        
+        
+    def isValid(self):
+        return len(self._geoms) > 0 and not self._tree is None
+    
         
     def append(self, geom : Geom):
         if self._tree:
             return
         self._geoms.append(geom)
         
-
+    def close(self):
+        self._geoms = None
+        self._tree = None
+        
+    def clone(self):
+        # return a deep copy of this collection without calling init
+        ngeom  = Geometries()
+        ngeom._geoms = [g.clone() for g in self._geoms]
+        return ngeom
         
         
-    def init(self, reassignIDFunc= None ):
+    def initIndex(self, reassignIDFunc= None ):
         if self._tree:
             return
         
@@ -341,10 +331,37 @@ class Geometries():
             
         Geometries._applyAttributes( self._geoms, attr, func)
             
+            
+    def features(self):
+        return [ g._feature for g in self._geoms]
+        
+    def __iter__(self):
+        return iter(self._geoms)
+        
     @staticmethod
     def _applyAttributes(geoms, attr, func):
         for g in geoms:
             g.properties[attr] = func(g.properties)
+            
+        
+        
+    @staticmethod
+    def collectGeoms(geoms,geomspath, add_properties = {}):
+        import fiona
+        if not isinstance(geomspath,(list,tuple)):
+            geomspath = [geomspath]
+        for g in geomspath:
+            for c in iter(fiona.open(str(g),'r')):
+                props = c["properties"]
+                geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
+        
+    @staticmethod
+    def buildInit(geomspath, name = 'Geometries',add_properties = {} ):
+        geoms = Geometries(name)
+        Geometries.collectGeoms(geoms, geomspath, add_properties)
+        geoms.initIndex()
+        return geoms          
+        
         
             
     def filterByAttributeFunc(self, func):
@@ -363,7 +380,76 @@ class Geometries():
         return filtered
     
     
+    def closest(self,geom, bufferm, attrs = None,doprojected = False):
+        from shapely import shortest_line
+        qppb = bufferSpherical(geom, bufferm)
+        
+        distances = list()
+        fitems = list()
+        
+        # in case geom is not a point
+        cppp = qppb.centroid
+        
+        intersectins = self.intersections(qppb)
+        
+        if not attrs is None:
+            for g in intersectins:
+                if doprojected:
+                    distances.append(g.distance(cppp))
+                else:
+                    sline = shortest_line(g.geometry,cppp)
+                    xy = list(sline.coordinates)
+                    dd = distance(Point(xy[0]),Point(xy[1]))
+                    distances.append(dd)
     
+                fitems.append(",".join(["{}={}".format(a,g.properits(a)) for a in attrs  if a in g.properties ]))
+            if len(distances) == 0:
+                return None,None
+            
+            # return  whole metres, let the recipient deal with conversions
+            minentry = min(distances)
+            return round(minentry,3),fitems[distances.index(minentry)]
+        
+        else:
+            for g in intersectins:
+                if doprojected:
+                    distances.append(g.distance(cppp))
+                else:
+                    sline = shortest_line(g.geometry,cppp)
+                    xy = list(sline.coordinates)
+                    dd = distance(Point(xy[0]),Point(xy[1]))
+                    distances.append(dd)
+    
+            if len(distances) == 0:
+                return None
+            
+            # return  whole metres, let the recipient deal with conversions
+            minentry = min(distances)
+            return round(minentry,3)
+    
+    def doWithin(self,p,doprojected = False):
+        '''
+        find the geometry a given geometry falls within and extracts the associated feature value (but not the  geometry)
+        
+        geom - the Geometry to relate to
+        w_geom  - the list of Features
+        
+        The feature needs to have either a name atttrib or a name in the properties to assign the context correctly 
+        
+        '''
+    
+        ## epsg:4326, lat lon
+        qbb = p.buffer(0.0001,8) # this will make a octagon - a very small one, it adds up to ~10 metre buffer around it
+        
+        reslist = []
+        intersectins = self.intersections(qbb)
+        for g in intersectins:
+
+            name_key = g.name
+            reslist.append("{}:{}".format(name_key,str(g.properties(name_key))))
+                            
+        return ",".join(reslist)
+
 
 
 def find_min_y_point(list_of_points):
@@ -802,4 +888,262 @@ def createGeometry(name,coords,properties= None):
         return feat
     
     return geom
+
+
+
+def closestAny(geom,target_geoms,buffer=5000,doprojected=False):
+    
+    '''
+    find the closest geometry to a given geometry and extract the associated feature values  
+    
+    geom - the Geometry (point) to relate to
+    buffer - the buffer to pad with, essentially the allowable max distance to search within
+    target_geoms  - the list of Features or geometry containers that have  properties 
+    attr - the attributes to collect from the properties
+    
+    '''
+    
+    attrs = []
+    
+    if isinstance(target_geoms,(list,tuple)):
+        fstore = target_geoms[0]
+        # the second is an instance of CacheManager
+        attrs = target_geoms[-1].attrKeys()
+    elif isinstance(target_geoms, FeaturesStore):
+        fstore = target_geoms
+    else:
+        raise ValueError(f"expecting list or single instance of 'FeaturesStore' don't know what to do with {target_geoms}")
+      
+      
+    if hasattr(fstore, "closestAny"):
+        return fstore.closestAny(geom,buffer,attrs,doprojected)
+      
+    #from shapely.ops import nearest_points
+    from shapely import shortest_line
+    
+    qppb = bufferSpherical(geom, buffer)
+    distances = list()
+    fitems = list()
+    
+    # in case geom is not a point
+    cppp = qppb.centroid
+    
+    inter_geoms = fstore.intersections(qppb)
+    
+    for feat in inter_geoms:
+  
+        if doprojected:
+            distances.append(feat.distance(cppp))
+        else:
+            sline = shortest_line(feat.geometry,cppp)
+            #dd = distance(*sline.coordinates)
+            x,y = sline.xy
+            dd = distance(Point(x[0],y[0]), Point(x[-1],y[-1]))
+            distances.append(dd)
+            
+        fitems.append(",".join(["{}={}".format(a,feat.attribute(a)) for a in attrs  if a in feat.properties ]))
+            
+    if len(distances) == 0:
+        return None,None
+    
+    # return  whole metres, let the recipient deal with conversions
+    minentry = min(distances)
+    return round(minentry,3),fitems[distances.index(minentry)]
+            
+
+    return None,None
+
+
+def closestDistance(geom,target_geoms,buffer = 5000,doprojected= False):
+        
+    '''
+    find the closest geometry to a given geometry and extract the associated feature values  
+    
+    geom - the Geometry (point) to relate to
+    buffer - the buffer to pad with, essentially the allowable max distance to search within
+    target_geoms  - the list of Features or geometry containers that have  properties 
+    
+    '''
+    if hasattr(target_geoms, "closest"):
+        return target_geoms.closest(geom,buffer,None,doprojected)
+        
+    if isinstance(target_geoms,(list,tuple)):
+        fstore = target_geoms[0]
+    elif isinstance(target_geoms, FeaturesStore):
+        fstore = target_geoms
+    else:
+        raise ValueError(f"expecting list or single instance of 'FeaturesStore' don't know what to do with {target_geoms}")
+      
+      
+    #from shapely.ops import nearest_points
+    from shapely import shortest_line
+    
+    qppb = bufferSpherical(geom, buffer)
+    distances = list()
+    fitems = list()
+    
+    
+    inter_geoms = fstore.intersections(qppb)
+    
+        
+    # in case geom is not a point
+    cppp = qppb.centroid
+    
+    if len(inter_geoms) > 0:
+        for feat in inter_geoms:
+
+            if doprojected:
+                distances.append(feat.distance(cppp))
+            else:
+                sline = shortest_line(feat.geometry,cppp)
+                #first, last = sline.boundary
+                x,y = sline.xy
+                dd = distance(Point(x[0],y[0]), Point(x[-1],y[-1]))
+                distances.append(dd)
+                    
+                    
+        if len(distances) == 0:
+            return None
+        
+        # return  whole metres, let the recipient deal with conversions
+        minentry = min(distances)
+        return round(minentry,3)
+            
+    return None
+
+
+
+def closestSegmentDistance(geom_ls,target_geoms,buffer = 5000,doprojected= False):
+    '''
+    find the closest geometry to a given linestring geometry and extract the associated feature values  
+    
+    geom - the Geometry (point) to relate to
+    buffer - the buffer to pad with, essentially the allowable max distance to search within
+    target_geoms  - the list of Features or geometry containers that have  properties 
+    
+    '''
+    
+    #from shapely.ops import nearest_points
+    from shapely import shortest_line
+    from shapely.ops import nearest_points
+    distances = list()
+    fitems = list()
+    
+    if isinstance(target_geoms,(list,tuple)):
+        fstore = target_geoms[0]
+    elif isinstance(target_geoms, FeaturesStore):
+        fstore = target_geoms
+    else:
+        raise ValueError(f"expecting list or single instance of 'FeaturesStore' don't know what to do with {target_geoms}")
+      
+    qppb = bufferSpherical(geom_ls, buffer)
+      
+    inter_geoms = fstore.intersections(qppb)
+    if len(inter_geoms) > 0:
+                
+        # we do expect a single store , not a potential list of stores
+        for feat in inter_geoms:
+            nseg = nearest_points(feat.geometry,geom_ls)
+    
+            if doprojected:
+                distances.append(nseg[0].distance(nseg[1]))
+            else:
+                dd = distance(nseg[0],nseg[1])
+                distances.append(dd)
+                    
+                    
+        if len(distances) == 0:
+            return None
+    
+        # return  whole metres, let the recipient deal with conversions
+        minentry = min(distances)
+        return round(minentry,3)
+    
+    
+            
+    return None
+    
+
+def doWithin(geom,w_geom,doprojected=False):
+    '''
+    find the geometry of a given geometry falls within and extracts the associated feature value (but not the  geometry)
+    
+    w_geom - the Geometry and optionally a cache manager to relate to as list of lists
+    geom  - the geometry to test
+    
+    The feature needs to have either a name atttrib or a name in the properties to assign the context correctly
+    The cache manager alternative may have an id and name enrry 
+    
+    '''
+    from pygeom.utils import CacheManager
+    
+    
+    if isinstance(w_geom,(list,tuple)) :
+        if not isinstance(w_geom[0],(list,tuple)):
+            fstores = [w_geom]
+        else:
+            fstores = w_geom
+    elif isinstance(w_geom, FeaturesStore):
+        fstores = [w_geom, None]
+    else:
+        raise ValueError(f"expecting list or single instance of 'FeaturesStore' and CacheManager - don't know what to do with {w_geom}")
+        
+
+    #this is to create a small polygon
+    if doprojected:
+        qbb = bufferSpherical(geom, 10)
+    else:
+        ## epsg:4326, lat lon
+        qbb = geom.buffer(0.0001,8) # this will make a octagon - a very small one, it adds up to ~10 metre buffer around it
+    
+    reslist = []
+    
+        
+    for tg in fstores:
+        #tg is a FeatureStore
+        inter_geoms = tg[0].intersections(geom)
+        if len(inter_geoms) > 0:
+            if not tg[1] is None and isinstance(tg[1],CacheManager) :
+                name_key = tg[1].attrMap("name")               
+            elif hasattr(tg, 'attrname'):
+                if callable(tg.attrname):
+                    name_key = tg.attrname()
+                else:
+                    name_key = tg.attrname
+
+            else:
+                raise ValueError(f"Feature has no accessible name {tg}")
+            
+            for g in inter_geoms:
+                reslist.append("{}:{}".format(name_key,str(g.attribute(name_key))))
+                        
+    return ",".join(reslist)
+        
+        
+        
+        
+        
+def findFirst(p,w_geom_collection , buffer = 5000, reverse = True, doprojected = False):
+    '''
+    There may be more than one Port dataset, so iterate through starting from the back if reversed is true
+    Every entry in the collection may have its own set of attributes to be mapped
+    
+    '''  
+
+    if reverse:
+        #for i in reversed(range(len(w_geom_collection))):
+        for wg in reversed(w_geom_collection):
+            
+            #rs = closestAny(p,w_geom_collection[i],collection_attrs[i],buffer,doprojected)
+            dist,rs = closestAny(p,wg,buffer,doprojected)
+            if not rs is None:
+                return dist,rs
+    else:
+        for wg in w_geom_collection:
+            dist,rs = closestAny(p,wg,buffer,doprojected)
+            if not rs is None:
+                return dist,rs 
+            
+            
+    return None, None
 

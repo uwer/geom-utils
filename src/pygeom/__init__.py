@@ -1,7 +1,8 @@
-from datetime import datetime as dt
-import os, sys, re
+from datetime import datetime, date,timezone
+import os, sys, re, json
 DEBUG = os.getenv("DEBUG", 'False').lower() in ('true', '1', 't')
 
+from typing import List, Dict
 NM2KM=1.852
 HOUR2SEC=3600.
 DAYS2SEC=HOUR2SEC*24.
@@ -19,8 +20,13 @@ def stopwatch(context):
         print('Total elapsed time for %s : %.3f sec' % (context, t1 - t0))
         
 
+LOG_DFORMAT = '%Y-%m-%dT%H:%M:%S%Z - '
+def formatNow():
+    return datetime.now(tz=timezone.utc).strftime(LOG_DFORMAT)
+
+
 def logme(msg):
-    print(msg, file=sys.stderr, flush=True)
+    print(f"{formatNow()}: {msg}", file=sys.stderr, flush=True)
     
     
 def mergeJson(dict0, dict1):
@@ -46,6 +52,12 @@ def mergeJsonDicts(jsondicts):
 
     
 def mergeCSV(fileroot, wildcard):
+    """
+    Merge a list of csv files as a result of the wildcard list,
+    The wildcard has to be complete based on the Path.glob paradigm (shell script resolving, not regex)
+    It is a vertical merge! 
+    """
+    
     from pathlib import Path
     import pandas as pd
     proot = Path(fileroot)
@@ -59,19 +71,18 @@ def mergeCSV(fileroot, wildcard):
     return pd.concat(frames), len(flist)
 
       
-def encodeDumpPath(dtime = dt.utcnow()):
+def encodeDumpPath(dtime = datetime.utcnow()):
+    '''
+    Build a path split by year/year-month/year-month-day
+    '''
     return [dtime.strftime("%Y"),dtime.strftime("%Y-%m"),dtime.strftime("%Y-%m-%d")]
 
-# AMQP domain patterns
-DOMAIN_REGEX = {
-    'exchange-name': re.compile(r'^[a-zA-Z0-9-_.:@#,/]*$'),
-    'queue-name': re.compile(r'^[a-zA-Z0-9-_.:@#,/]*$')
-}
 
-mmsi_regex = re.compile("[2-7]\d{8}")
-mmsi_indo_regex = re.compile("^525\d{6}$")
 
-def validMMSI(mmsi):
+mmsi_regex = re.compile(r"[2-7]\d{8}")
+mmsi_indo_regex = re.compile(r"^525\d{6}$")
+
+def validMMSI(mmsi, repattern = mmsi_regex):
     '''
     valid mmsi must 
     start with 2 to 7
@@ -93,7 +104,7 @@ def validMMSI(mmsi):
     navigational aids (AtoNs; 99MIDaxxx)[note 5]
 
     '''
-    return 
+    return not repattern.match(str(mmsi)) is None
     
     
     
@@ -101,21 +112,24 @@ def toTS(dtt):
     return dtt.timestamp()
 
 def _nowISOString():
-    return dt.utcnow().isoformat()
+    return datetime.utcnow().isoformat()
 
 def _nowUTCOrdinal():
-    return int(dt.utcnow().timestamp())
+    return int(datetime.utcnow().timestamp())
 
 def _nowTIMESTAMPString():
-    return str(dt.utcnow().timestamp())
+    return str(datetime.utcnow().timestamp())
 
 def isValidStr(strval):
     if strval is None:
         return False
     return len(str(strval).strip()) > 0
 
+'''
+A collection of convenience classes to treat 'containers' of geometry collections the same way, 
+sometimes avoiding the overhead of 'heavier' classes
 
-
+'''
 
 class Attributed():
     '''
@@ -167,6 +181,21 @@ class Attributed():
         else:
             raise ValueError('properties must be a dict.')
 
+    # emulating QGis Feature and provide dict like access to properties , aka fields in QGis 
+    def __getitem__(self,key):
+        return self.get_attr(key)
+    
+    def __setitem__(self,key, value):
+        return self.set_attr(key,value)
+
+
+    def keys(self):
+        return self._attr.keys()
+    
+    
+    
+        
+    
 
 
 class PrintGeom():
@@ -306,10 +335,19 @@ class Feature(Attributed):
 
         from shapely.geometry.base import BaseGeometry
         if isinstance(geometry, BaseGeometry):
+            
+            ## through the back of the head to the eye, force compatibility with qgis.geometry 
+            
             def asWkt(self):
                 return self.wkt
-            ## through the back of the head to the eye, force compatibility with qgis.geometry 
             setattr(geometry, 'asWkt', asWkt)
+            
+            def asPoint(self):
+                return self.centroid
+            setattr(geometry, 'asPoint', asPoint)
+            
+            asPoint
+            
             
             return
                        
@@ -344,7 +382,7 @@ class Feature(Attributed):
 
     def __eq__(self, other):
         return self.__geo_interface__ == other.__geo_interface__
-
+    
 
 
 class FeatureCollection(Attributed):
@@ -484,3 +522,86 @@ class FeatureCollection(Attributed):
 
     def __eq__(self, other):
         return self.__geo_interface__ == other.__geo_interface__
+    
+    
+
+## Export functions 
+
+def _exportJsonProperties(props):
+    if props:
+        for k in props:
+            if isinstance(props[k],(list, tuple) ):
+                if len(props[k]) > 0:
+                    if isinstance(props[k][0],(date, datetime) ):
+                        props[k] = ",".join([d.isoformat() for d in props[k]])
+                    else:
+                        props[k] = ",".join([str(d) for d in props[k]])
+                else:
+                    props[k] = ""
+                        
+            elif isinstance(props[k],(date, datetime) ):
+                props[k] = props[k].isoformat()
+    return props
+
+def _createFeature(coords, props):
+    return { "type": "Feature",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [coords]
+          },
+        "properties": props
+        }
+    
+    
+def _createFeatureShapely(geom, props):
+    '''
+    if props:
+        for k in props:
+            if isinstance(props[k],(list, tuple) ):
+                if len(props[k]) > 0:
+                    if isinstance(props[k][0],(date, datetime) ):
+                        props[k] = ",".join([d.isoformat() for d in props[k]])
+                    else:
+                        props[k] = ",".join([str(d) for d in props[k]])
+                else:
+                    props[k] = ""
+                        
+            elif isinstance(props[k],(date, datetime) ):
+                props[k] = props[k].isoformat()
+    '''
+    
+    return { "type": "Feature",
+        "geometry": geom.__geo_interface__ ,
+        "properties": _exportJsonProperties(props)
+        }
+
+def _createFeaturCollection(feats):
+    return { "type": "FeatureCollection",
+    "features":feats}
+    
+
+    
+def toGeoJson(shapelygeoms : List, props: List):
+    
+    if props:
+        return json.dumps({
+                'type': 'FeatureCollection',
+                'features': [{
+                'type': 'Feature',
+                'properties':p if p else {},
+                'geometry': buffer.__geo_interface__
+            } for buffer, p in zip(shapelygeoms,props)]})
+        
+    else:
+        return json.dumps({
+                'type': 'FeatureCollection',
+                'features': [{
+                'type': 'Feature',
+                'geometry': buffer.__geo_interface__
+            } for buffer in shapelygeoms]})
+    
+    
+    
+    
+    
+

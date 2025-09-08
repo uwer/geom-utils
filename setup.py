@@ -4,7 +4,7 @@ setup(
     name='pygeom',
     version='0.9',
     package_dir = {"": "src"},
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     
     url='https://github.com/uwer/geom-utils',
     author='UR',
@@ -12,7 +12,9 @@ setup(
     install_requires=[
         "shapely",
         "pyproj",
-        "geographiclib"   
+        "geographiclib"   ,
+        "pandas",
+        "numpy"
     ],
     
     packages=find_packages(where='src'),

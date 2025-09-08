@@ -1,3 +1,5 @@
 shapely
 pyproj>=2.1.0
 geographiclib
+pandas
+numpy
