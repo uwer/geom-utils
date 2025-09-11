@@ -295,7 +295,7 @@ class Feature(Attributed):
         Attributed.__init__(self, properties=properties)
         self._geometry = None
         if not geometry is None:
-            self.steGeometry( geometry)
+            self.setGeometry( geometry)
         self._id = feature_id
         
         if feature_id is None:
@@ -346,7 +346,10 @@ class Feature(Attributed):
                 return self.centroid
             setattr(geometry, 'asPoint', asPoint)
             
-            asPoint
+            def asJson(self):
+                return json.dumps(self.__geo_interface__)
+            
+            setattr(geometry, 'asJson', asJson)
             
             
             return
@@ -372,7 +375,7 @@ class Feature(Attributed):
     def __geo_interface__(self):
         vals=  {
             'type': 'Feature',
-            'geometry': self.geometry.__geo_interface__,
+            'geometry': self._geometry.__geo_interface__,
             #'id':self.id,
             'properties': self.properties,
         }
@@ -579,7 +582,15 @@ def _createFeaturCollection(feats):
     return { "type": "FeatureCollection",
     "features":feats}
     
-
+    
+    
+def bufferFromPoint(x:float,y:float,buffer:float):
+    from shapely import Point
+    return Point(x,y).buffer(buffer,20)
+    
+    
+def bufferFeatureFromPoint(x:float,y:float,buffer:float):
+    return  Feature(bufferFromPoint(x,y,buffer),{})
     
 def toGeoJson(shapelygeoms : List, props: List):
     

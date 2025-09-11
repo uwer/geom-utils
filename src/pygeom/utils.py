@@ -302,6 +302,16 @@ class CacheManager(ABC):
     
     @abstractmethod
     def attrKeys(self):
+        '''
+        Return the available keys in the properties
+        '''
+        pass
+    
+    @abstractmethod
+    def subsetAttr(self, keys: List):
+        '''
+        Return a subst of the properties according to the keys
+        '''
         pass
     
     @abstractmethod
@@ -378,6 +388,9 @@ class FeaturesCacheManager(CacheManager):
     def attrKeys(self):
         return list(self.attrmap.keys())
     
+    
+    def subsetAttr(self, keys: List):
+        return {k:self.attrmap[k] for k in keys if k in  self.attrmap}
     
     def name(self):
         return self._corefeatures.name()

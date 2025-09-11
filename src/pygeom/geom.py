@@ -22,12 +22,61 @@ import numpy as np
 
 epsg4326Proj = pyproj.CRS('epsg:4326')
 
-from geographiclib.geodesic import Geodesic
+
 
 DOTRACK = False
 
+def createTransferProj(src_crs,target_csr):
+    '''
+    Create the projection transform function for geometries,
+    call by 
+    from shapely.ops import transform
+    transform(proj_func,geometry)
+    
+    
+    '''
+    from functools import partial
+    
+    if type(src_crs) is pyproj.Proj:
+        psrc_crs = src_crs
+    elif type(src_crs) is dict:
+        psrc_crs = pyproj.Proj(src_crs)
+    else:
+        psrc_crs = pyproj.Proj(init=str(src_crs))
+    
+    if type(target_csr) is pyproj.Proj:
+        ptarget_crs = target_csr
+    elif type(target_csr) is dict:
+        ptarget_crs = pyproj.Proj(target_csr)
+    else:
+        ptarget_crs = pyproj.Proj(init=str(target_csr))
+                                                          
+        
+    if psrc_crs.srs == ptarget_crs.srs:
+        return None
+    
+    project = partial(
+     pyproj.transform,
+     psrc_crs,
+     ptarget_crs
+    )
+    
+    return project
+
+    
+def _mapping(ob):
+    return ob.__geo_interface__ 
+    
+def geo_json_dump(obj, fp, *args, **kwargs):
+    import json
+    #from shapely.geometry.geo import mapping
+    """Dump shapely geometry object  :obj: to a file :fp:. as string """
+    strobj = json.dumps(_mapping(obj), *args, **kwargs)
+    fp.write(strobj)
+    
 
 def distance (p1,p2):
+    from geographiclib.geodesic import Geodesic
     #return  Geodesic.WGS84.Inverse(39.435307, -76.799614, 39.43604, -76.79989)
     return  Geodesic.WGS84.Inverse(p1.y, p1.x, p2.y, p2.x)['s12']
 
@@ -40,7 +89,53 @@ def distanceList(points):
     
     
 
+def calculate_initial_compass_bearing(pointA, pointB):
+    """
+    Calculates the bearing between two points.
+    The formulae used is the following:
+        θ = atan2(sin(Δlong).cos(lat2),
+                  cos(lat1).sin(lat2) − sin(lat1).cos(lat2).cos(Δlong))
+    :Parameters:
+      - `pointA: The tuple representing the latitude/longitude for the
+        first point. Latitude and longitude must be in decimal degrees
+      - `pointB: The tuple representing the latitude/longitude for the
+        second point. Latitude and longitude must be in decimal degrees
+    :Returns:
+      The bearing in degrees
+    :Returns Type:
+      float
+    """
+    
+    """
+    We are doing the same as Geodesci.bearing ...
+    """
+    
+    
+    if (type(pointA) != tuple) or (type(pointB) != tuple):
+        raise TypeError("Only tuples are supported as arguments")
+
+    lat1 = math.radians(pointA[0])
+    lat2 = math.radians(pointB[0])
+
+    diffLong = math.radians(pointB[1] - pointA[1])
+
+    x = math.sin(diffLong) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1)
+            * math.cos(lat2) * math.cos(diffLong))
+
+    initial_bearing = math.atan2(x, y)
+
+    # Now we have the initial bearing but math.atan2 return values
+    # from -180° to + 180° which is not what we want for a compass bearing
+    # The solution is to normalize the initial bearing as shown below
+    initial_bearing = math.degrees(initial_bearing)
+    compass_bearing = (initial_bearing + 360) % 360
+
+    return compass_bearing
+
+
 def bearing (p1,p2):
+    from geographiclib.geodesic import Geodesic
     return Geodesic.WGS84.Inverse( p1.y, p1.x, p2.y, p2.x)['azi1']
 
 def bearingProb(p1,p2,p3):
@@ -67,6 +162,7 @@ def bearingProb(p1,p2,p3):
 
 
 def distanceAtBearing (p1, bearing, distance_m):
+    from geographiclib.geodesic import Geodesic
     resdict = Geodesic.WGS84.Direct( p1.y, p1.x, bearing, distance_m) 
     return Point(resdict ['lon2'],resdict ['lat2'])
 
@@ -205,7 +301,8 @@ def lineStringFeatureFromWKTPoints(wktkist, props = None):
 
 class Geom():
     '''
-    A container holding one geometry to test against if a vessel trajectory potentially intersects with it
+    A container holding one geometry to test against if a vessel trajectory potentially intersects with it.
+    It in essence represents a working container of a Feature in  a FeaturesStore
     '''
     
     def __init__(self, geom, properties):
@@ -643,22 +740,77 @@ def as_wkt(point_list):
     wkt += '))'
     return wkt
     
-    def features(self):
-        return [ g._feature for g in self._geoms]
-        
+
+def points_as_wktPolygon(point_list):
+    """
+    Returns the geometry described by *point_list* in Well Known Text format
+    Example: hull = self.as_wkt(the_hull)
+             feature.setGeometry(QgsGeometry.fromWkt(hull))
+    :param point_list: list of tuples (x, y)
+    :return: polygon geometry as WTK
+    """
+    wkt = 'POLYGON((' + str(point_list[0][0]) + ' ' + str(point_list[0][1])
+    for p in point_list[1:]:
+        wkt += ', ' + str(p[0]) + ' ' + str(p[1])
+    wkt += '))'
+    return wkt
+
+def edges_as_wktMultiLine(edge_list):
+    """
+    Returns the geometry described by *point_list* in Well Known Text format
+    Example: hull = self.as_wkt(the_hull)
+             feature.setGeometry(QgsGeometry.fromWkt(hull))
+    :param point_list: list of tuples (x, y)
+    MULTILINESTRING ((30 20, 45 40, 10 40), (15 5, 40 10, 10 20))"
+    :return: polygon geometry as WTK
+    """
     
+    wkt = 'MULTILINESTRING('
+    edges = list()
+    for e in edge_list:
+        edges.append("( {} {} ".format(*e[0])+", {} {} )".format(*e[1]))
     
-    @staticmethod
-    def collectGeoms(geoms,geomspath, add_properties = {}):
-        import fiona
-        if not isinstance(geomspath,(list,tuple)):
-            geomspath = [geomspath]
-        for g in geomspath:
-            for c in iter(fiona.open(str(g),'r')):
-                props = c["properties"]
-                geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
-        
+    wkt += ",".join(edges) 
+    wkt += ')'
+    return wkt
+
+def edges_as_wktPoints(edge_list):
+    """
+    Returns the geometry described by *point_list* in Well Known Text format
+    Example: hull = self.as_wkt(the_hull)
+             feature.setGeometry(QgsGeometry.fromWkt(hull))
+    :param point_list: list of tuples (x, y)
+    MULTILINESTRING ((30 20, 45 40, 10 40), (15 5, 40 10, 10 20))"
+    :return: polygon geometry as WTK
+    """
     
+    wkt = 'MULTIPOINT('
+    edges = list()
+    for e in edge_list:
+        edges.append("({} {} )".format(*e[0])+",( {} {} )".format(*e[1]))
+    
+    wkt += ",".join(edges) 
+    wkt += ')'
+    return wkt
+
+def points_as_wktPoints(pointlist):
+    """
+    Returns the geometry described by *point_list* in Well Known Text format
+    Example: hull = self.as_wkt(the_hull)
+             feature.setGeometry(QgsGeometry.fromWkt(hull))
+    :param point_list: list of tuples (x, y)
+    MULTIPOINT ((30 20), (15 5 ),( 40 10),( 10 20))"
+    :return: multi point geometry as WTK
+    """
+    
+    wkt = 'MULTIPOINT('
+    edges = list()
+    for e in pointlist:
+        edges.append("({} {} )".format(*e))
+    
+    wkt += ",".join(edges) 
+    wkt += ')'
+    return wkt
     
 
 def as_polygon(pointlist):
@@ -808,7 +960,7 @@ def concave_hull(points_list, k=3):
 
 def convex (xys, alpha):
     geom = as_polygon(xys)
-    return geom.convex_hull()
+    return geom.convex_hull
     
 
 def concave(xys, alpha):
@@ -891,6 +1043,10 @@ def createGeometry(name,coords,properties= None):
 
 
 
+
+##### Functions to calculate relationships
+
+
 def closestAny(geom,target_geoms,buffer=5000,doprojected=False):
     
     '''
@@ -901,14 +1057,16 @@ def closestAny(geom,target_geoms,buffer=5000,doprojected=False):
     target_geoms  - the list of Features or geometry containers that have  properties 
     attr - the attributes to collect from the properties
     
+    returns - distance and dict representing the key/ values requested if available - 'None,None' if nothing is found
+    
     '''
     
-    attrs = []
+    attrs = {}
     
     if isinstance(target_geoms,(list,tuple)):
         fstore = target_geoms[0]
         # the second is an instance of CacheManager
-        attrs = target_geoms[-1].attrKeys()
+        attrs = target_geoms[-1].subsetAttr(target_geoms[-1].attrKeys())
     elif isinstance(target_geoms, FeaturesStore):
         fstore = target_geoms
     else:
@@ -941,7 +1099,8 @@ def closestAny(geom,target_geoms,buffer=5000,doprojected=False):
             dd = distance(Point(x[0],y[0]), Point(x[-1],y[-1]))
             distances.append(dd)
             
-        fitems.append(",".join(["{}={}".format(a,feat.attribute(a)) for a in attrs  if a in feat.properties ]))
+        #fitems.append(",".join(["{}={}".format(a,feat.attribute(a)) for a in attrs  if a in feat.properties ]))
+        fitems.append({a:feat.attribute(attrs[a]) for a in attrs  if isinstance(attrs[a],str) and attrs[a] in feat.properties })
             
     if len(distances) == 0:
         return None,None
