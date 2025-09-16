@@ -445,6 +445,10 @@ class FeatureCollection(Attributed):
     def geometries_iterator(self):
         for feature in self.features:
             yield feature.geometry()
+            
+    def geometries_properties_itertor(self):
+        for feature in self.features:
+            yield feature.geometry(), feature.properties
 
 
     def __extractBounds(self,geom):
@@ -611,6 +615,86 @@ def toGeoJson(shapelygeoms : List, props: List):
                 'geometry': buffer.__geo_interface__
             } for buffer in shapelygeoms]})
     
+    
+    
+def toGeoPackage(fetcolection , outfile, epsg = '4326'):
+    import geopandas as gpd
+    import pandas as pd
+    
+    geoms = []
+    properties = []
+    for g,p in fetcolection.geometries_properties_itertor():
+        properties.append(p)
+        geoms.append(g)
+        
+    df = pd.DataFrame(properties)
+    df["geometry"] = geoms
+    gdf  = gpd.GeoDataFrame(df,crs=f"EPSG:{epsg}")
+    
+        
+    gdf.to_file(outfile, driver='GPKG',mode='a')
+
+
+'''
+def appendToGPKG(infile, outfile, layer = None):    
+    if layer is None:
+        import os
+        layer = os.path.splitext(os.path.basename(infile))[0] 
+    writeToGPKG(infile, str(outfile), mode ='a',layer=layer)
+''' 
+    
+def writeToGPKG(infile, outfile, layer =None):
+    import fiona
+    from pathlib import Path
+    from pygeom.utils import ensureSuffix
+    outfilep = Path(ensureSuffix(outfile,"gpkg")).as_uri()
+    
+    # Open a file for reading. We'll call this the source.
+    with fiona.open(infile) as src:
+        # The file we'll write to must be initialized with a coordinate
+        # system, a format driver name, and a record schema. We can get
+        # initial values from the open source's profile property and then
+        # modify them as we need.
+        profile = src.profile
+        profile["driver"] = "GPKG"
+        # ignored anyway
+        #if not layer is None:    
+        #    profile["layer"] = None
+    
+        # Open an output file, using the same format driver and coordinate
+        # reference system as the source. The profile mapping fills in the
+        with fiona.open(outfilep, "w",**profile) as dst:
+            for feat in src:
+                dst.write(feat)
+                
+def writeToSHP(infile, outfile, layer =None):
+    import fiona
+    from pygeom.utils import ensureSuffix
+    from pathlib import Path
+    outfilep = Path(ensureSuffix(outfile,"shp")).as_uri()
+    
+    # Open a file for reading. We'll call this the source.
+    with fiona.open(infile) as src:
+        # The file we'll write to must be initialized with a coordinate
+        # system, a format driver name, and a record schema. We can get
+        # initial values from the open source's profile property and then
+        # modify them as we need.
+        profile = src.profile
+        profile["driver"] = "ESRI Shapefile"
+        # ignored anyway
+        #if not layer is None:    
+        #    profile["layer"] = None
+    
+        # Open an output file, using the same format driver and coordinate
+        # reference system as the source. The profile mapping fills in the
+        with fiona.open(outfilep, "w",**profile) as dst:
+            for feat in src:
+                dst.write(feat)
+                
+                
+                
+        
+        
     
     
     

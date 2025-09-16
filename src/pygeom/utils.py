@@ -227,8 +227,11 @@ def createTMPDir():
     
 def ensureSuffix(filename, suffix):
     import os
-    ss = os.path.splitext(filename)
+    ss = list(os.path.splitext(filename))
     if not suffix in ss[1]:
+        if "." in ss[1]:
+            filename = filename.rsplit(".",1)[0]
+            
         if suffix[0] == '.':
             return  filename+suffix
         elif filename[-1] == '.':

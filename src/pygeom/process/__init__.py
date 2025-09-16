@@ -2,7 +2,7 @@
 
 
 from pygeom import logme, stopwatch
-
+from typing import overload
 class LogHandler():
     
     Info = 6
@@ -40,6 +40,7 @@ class LogHandler():
     EGSTAR = '✳'
     EEYS= '👀'
     EGEAR = '⚙'
+    ESHIELD = '🛡'
     
     
     
@@ -68,13 +69,14 @@ class LogHandler():
     
     
     def _report(self):
-        self._logfunc(f'{LogHandler.EPROGRESS} Progress: {round(self._progress,3)}')
+        self._logfunc(f'{self.__name}-{LogHandler.EPROGRESS} Progress: {round(self._progress,3)}')
         
     def __init__(self, name = "Log",logfunc = logme):
         self._progress = 0.
         self._logfunc = logfunc
-        self._name = name
-        self.logMessage(f"Created handler {self._name}", "Init", LogHandler.Tooling)
+        self.__name = name
+        self._logfunc(f'{self.__name}-{LogHandler.ESHIELD} "Init" - Created handler {self.__name}')
+        #self._doLogMessage(f"Created handler {self.__name}", "Init", LogHandler.Tooling)
          
     def isCanceled(self):
         return False
@@ -94,9 +96,18 @@ class LogHandler():
     def progress(self) -> float:
         return self._progress
     
+    def _doLogMessage(self,msg,msg_context="Message",msg_type=Info):
+        self._logfunc(f'{self.__name}-{self.emoji4Code(msg_type)} {msg_context} - {msg}')
     
+    @overload
+    def logMessage(self,msg,msg_context="Message"):
+        self._doLogMessage(msg,msg_context,LogHandler.Info)
+        
+        
+    @overload
+    def logMessage(self,msg,msg_type=Info):
+        self._doLogMessage(msg,msg_context="Message",msg_type=msg_type)
+        
+        
     def logMessage(self,msg,msg_context="Message",msg_type=Info):
-        self._logfunc(f'{self._name}-{self.emoji4Code(msg_type)} {msg_context} - {msg}')
-        
-        
-        
+        self._doLogMessage(msg,msg_context,msg_type)    
