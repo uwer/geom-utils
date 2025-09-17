@@ -341,7 +341,7 @@ class ExecuteGeomTasks():
         
         dfilelist = list(Path(datapath).glob(datafile))
         if  len (dfilelist) < 1:
-            cancelHandler.logMessage("Not found data files for  {} ".format(datafile),LoadGeoms_MESSAGE_CATEGORY, LogHandler.Critical)
+            cancelHandler.logMessage(f"Not found data files for  {datafile} in {datapath}",LoadGeoms_MESSAGE_CATEGORY, LogHandler.Critical)
             return
         # grab the first one 
         with dfilelist[0].open() as fp:
