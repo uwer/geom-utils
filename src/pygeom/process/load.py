@@ -450,7 +450,7 @@ class ExecuteGeomTasks():
         with stopwatch(f"{self.__class__.__name__}: collecting context data async"):
             from .collect import createTask,waitForRequests
             import asyncio
-            loop = asyncio.new_event_loop()
+            loop = asyncio.get_event_loop()
             try:
                 
                 
@@ -489,7 +489,7 @@ class ExecuteGeomTasks():
                 self._cancelHandler.logMessage(f"Failed loading Geometries {e}",LoadGeoms_MESSAGE_CATEGORY,LogHandler.Error)
                 self._success = False
             finally:
-                loop.close()
+                #loop.close()
                 self._finished = True
         
                 
