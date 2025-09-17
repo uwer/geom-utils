@@ -1,6 +1,8 @@
 import os, sys, json
-
+from pygeom import isTrue
 DEBUG_GEOM_LOADING=False
+# get this form the env var
+ASYNC_NEWLOOP=isTrue(os.getenv('ASYNC_NEWLOOP',True))
 
 from pygeom.utils import timeout
 from pygeom import stopwatch
@@ -450,7 +452,10 @@ class ExecuteGeomTasks():
         with stopwatch(f"{self.__class__.__name__}: collecting context data async"):
             from .collect import createTask,waitForRequests
             import asyncio
-            loop = asyncio.get_event_loop()
+            if ASYNC_NEWLOOP:
+                loop = asyncio.new_event_loop()
+            else:
+                loop = asyncio.get_event_loop()
             try:
                 
                 
@@ -477,7 +482,8 @@ class ExecuteGeomTasks():
                     
                     tt.cancelSimple = self.__assignCancel
                     
-                asyncio.set_event_loop(loop)
+                if ASYNC_NEWLOOP:
+                    asyncio.set_event_loop(loop)
                 res, failed = loop.run_until_complete(waitForRequests(tasks))
                 
                 self._cancelHandler.logMessage(f" return contxt len {len(res.keys())}")
@@ -489,7 +495,8 @@ class ExecuteGeomTasks():
                 self._cancelHandler.logMessage(f"Failed loading Geometries {e}",LoadGeoms_MESSAGE_CATEGORY,LogHandler.Error)
                 self._success = False
             finally:
-                #loop.close()
+                if ASYNC_NEWLOOP:
+                    loop.close()
                 self._finished = True
         
                 

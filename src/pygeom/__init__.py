@@ -25,6 +25,11 @@ def formatNow():
     return datetime.now(tz=timezone.utc).strftime(LOG_DFORMAT)
 
 
+def isTrue(strval):
+    if isinstance(strval,bool):
+        return strval
+    return  "1" in strval or "t" in strval.lower()
+
 def logme(msg):
     print(f"{formatNow()}: {msg}", file=sys.stderr, flush=True)
     
