@@ -449,6 +449,9 @@ class ExecuteGeomTasks():
         with stopwatch(f"{self.__class__.__name__}: cleaning gpkg references"):
             self.cleanGPKG(self._rpath,self._params)
         
+        
+        self._cancelHandler.logMessage(f"Asyn Loop as: {ASYNC_NEWLOOP}",LoadGeoms_MESSAGE_CATEGORY,LogHandler.Info)
+                    
         with stopwatch(f"{self.__class__.__name__}: collecting context data async"):
             from .collect import createTask,waitForRequests
             import asyncio

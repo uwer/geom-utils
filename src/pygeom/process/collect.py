@@ -52,7 +52,6 @@ def nowTS():
 
 async def waitForRequests(tasks, now1 = nowTS()):
     
-    now2 = nowTS()
     await asyncio.gather(*tasks)
     now3 = nowTS()
     results = {}
@@ -68,7 +67,7 @@ async def waitForRequests(tasks, now1 = nowTS()):
             failed[k] = e
     now4 = nowTS()
             
-    print("times setup {}  gather {} collect {} ".format(now2-now1,now3-now2,now4-now3))
+    print("times  gather {} collect {} ".format(now3-now1,now4-now3))
     
     return  results,failed
             

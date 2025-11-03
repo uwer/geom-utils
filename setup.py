@@ -14,7 +14,8 @@ setup(
         "pyproj",
         "geographiclib"   ,
         "pandas",
-        "numpy"
+        "numpy",
+        "fiona"
     ],
     
     packages=find_packages(where='src'),
