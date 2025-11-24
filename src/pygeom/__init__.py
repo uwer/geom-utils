@@ -337,30 +337,39 @@ class Feature(Attributed):
         self._geometry = geometry
         if  isinstance(geometry,(PrintGeom)):
             return
-
+        """
         from shapely.geometry.base import BaseGeometry
         if isinstance(geometry, BaseGeometry):
-            
+            from pygeom.geom import GeometryMixin
             ## through the back of the head to the eye, force compatibility with qgis.geometry 
+            class GeomExtension(geometry.__class__,GeometryMixin):
+                
+                def __init__(self,parent):
+                    self.super(parent)
+                    #self.__dict__ = parent.__dict__
+                    
+                
+            self._geometry = GeomExtension(geometry)
             
-            def asWkt(self):
+            '''
+            def asWkt_func(self):
                 return self.wkt
-            setattr(geometry, 'asWkt', asWkt)
+            setattr(geometry, 'asWkt', asWkt_func)
             
-            def asPoint(self):
+            def asPoint_func(self):
                 return self.centroid
-            setattr(geometry, 'asPoint', asPoint)
+            setattr(geometry, 'asPoint', asPoint_func)
             
-            def asJson(self):
+            def asJson_func(self):
                 return json.dumps(self.__geo_interface__)
             
-            setattr(geometry, 'asJson', asJson)
-            
+            setattr(geometry, 'asJson', asJson_func)
+            '''
             
             return
                        
         raise ValueError('geometry must be a shapely geometry or print version.')
-
+        """
         
         
     @property

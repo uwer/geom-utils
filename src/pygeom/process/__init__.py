@@ -69,7 +69,7 @@ class LogHandler():
     
     
     def _report(self):
-        self._logfunc(f'{self.__name}-{LogHandler.EPROGRESS} Progress: {round(self._progress,3)}')
+        self._logfunc(f'{self.__name}-{LogHandler.EPROGRESS} Progress: {round(self._progress,1)}')
         
     def __init__(self, name = "Log",logfunc = logme):
         self._progress = 0.
@@ -82,12 +82,17 @@ class LogHandler():
         return False
     
     def setProgress(self,p):
-        self._progress = p
-        self._report()
+        if round(p,1) != round(self._progress,1):
+            self._progress = p
+            self._report()
+        else:    
+            self._progress = p
+        
+        
         
     def increment(self, progressIncrement: float):
-        self._progress += progressIncrement
-        self._report()
+        p = self._progress + progressIncrement
+        self.setProgress(p)
     
     def cancel(self):
         pass

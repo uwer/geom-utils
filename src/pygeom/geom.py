@@ -296,6 +296,16 @@ def lineStringFeatureFromWKTPoints(wktkist, props = None):
     return {'type': 'Feature',"properties":props if props else {}, 'geometry': LineString(plist).__geo_interface__ }
     
 
+class GeometryMixin():
+    
+    def asWkt(self):
+        return self.wkt
+                
+    def asPoint(self):
+        self.centroid
+                    
+    def asJson(self):
+        return json.dumps(self.__geo_interface__)
     
     
 
@@ -1062,6 +1072,10 @@ def closestAny(geom,target_geoms,buffer=5000,doprojected=False):
     '''
     
     attrs = {}
+    
+    if isinstance(target_geoms,(list,tuple)) and isinstance(target_geoms[0],(list,tuple)):        
+        target_geoms = target_geoms[0]
+    
     
     if isinstance(target_geoms,(list,tuple)):
         fstore = target_geoms[0]
