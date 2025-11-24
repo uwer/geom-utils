@@ -564,10 +564,10 @@ def _exportJsonProperties(props):
                 props[k] = props[k].isoformat()
     return props
 
-def _createFeature(coords, props):
+def _createFeature(coords, props, type="Polygon"):
     return { "type": "Feature",
         "geometry": {
-          "type": "Polygon",
+          "type": type,
           "coordinates": [coords]
           },
         "properties": props

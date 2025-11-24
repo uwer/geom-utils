@@ -199,6 +199,8 @@ def calcSpeedDistance(dt: timedelta, p1: Point,p2:Point):
 def point(coords):
     return Point(*coords)
 
+
+
 def bufferSpherical(geom, distance_m): 
     # this should be less than 10 km, otherwise too much distortion
     centroid = geom.centroid
@@ -851,6 +853,9 @@ def clean_list(list_of_points):
     return l
     #return list(set(list_of_points))
 
+'''
+
+way to slow
 def concave_hull(points_list, k=3):
     """
     Calculates a valid concave hull polygon containing all given points. The algorithm searches for that
@@ -967,18 +972,15 @@ def concave_hull(points_list, k=3):
 
     # a valid hull has been constructed
     return hull
-
-def convex (xys, alpha):
-    geom = as_polygon(xys)
-    return geom.convex_hull
     
 
+
 def concave(xys, alpha):
-    '''
+    """
     calculate the concave hill over points in xys
     return Feature object
     
-    '''
+    """
     import numpy as np
     from pygeom import Feature
     if type(xys) is np.ndarray:
@@ -998,6 +1000,28 @@ def concave(xys, alpha):
     return [Feature(geom)]
 
     
+'''
+
+def convex (xys, alpha):
+    geom = as_polygon(xys)
+    return geom.convex_hull
+    
+    
+def concave(xy2, alpha):
+
+    from concave_hull import (  # noqa: F401
+        concave_hull
+    )
+    
+    hull = concave_hull(xy2,length_threshold=40)
+    # close the polygon
+    hull.append(hull[0])
+    #from pygeom.geom import as_polygon
+    from pygeom import Feature
+    
+    return [Feature(as_polygon(hull))]
+
+
 
 
 def geometryFromWkt(wkt):
