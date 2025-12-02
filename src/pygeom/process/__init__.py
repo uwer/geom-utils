@@ -116,3 +116,34 @@ class LogHandler():
         
     def logMessage(self,msg,msg_context="Message",msg_type=Info):
         self._doLogMessage(msg,msg_context,msg_type)    
+        
+        
+class LoggingDelegate(LogHandler):
+    
+    
+    def __init__(self,contextpath):
+        # ensure order
+        import logging
+        self.logger = logging.Logger(contextpath)
+        LogHandler.__init__(self,contextpath,self.__message)
+        
+        
+    def __message(self,msg):
+        self._doLogMessage(msg)
+        
+    def _doLogMessage(self,msg,msg_context="Message",msg_type=LogHandler.Info):
+        
+        match msg_type:
+            case LogHandler.Debug:
+                self.logger.debug(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
+            case LogHandler.Warning:
+                self.logger.warn(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
+            case LogHandler.Critical:
+                self.logger.critical(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}') 
+            case LogHandler.Error:
+                self.logger.error(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}') 
+            case _:
+                self.logger.info(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
+                        
+        
+        

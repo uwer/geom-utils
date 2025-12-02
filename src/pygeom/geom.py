@@ -13,7 +13,7 @@ from random import randrange
 from collections.abc import Iterable
 
 
-from pygeom import logme, _createFeatureShapely
+from pygeom import logme, _createFeatureShapely, Feature
 
 from datetime import datetime, date
 from _datetime import timedelta
@@ -22,7 +22,7 @@ import numpy as np
 
 epsg4326Proj = pyproj.CRS('epsg:4326')
 
-
+METRIC_PROCEJTION=pyproj.CRS("EPSG:3995")
 
 DOTRACK = False
 
@@ -62,6 +62,39 @@ def createTransferProj(src_crs,target_csr):
     )
     
     return project
+
+
+def createTransformer(src_crs,target_csr):
+    '''
+    Create the projection transform function for geometries,
+    call by 
+    from shapely.ops import transform
+    transform(proj_func,geometry)
+    
+    
+    '''
+    
+    if type(src_crs) is pyproj.Proj:
+        psrc_crs = src_crs
+    elif type(src_crs) is dict:
+        psrc_crs = pyproj.Proj(src_crs)
+    else:
+        psrc_crs = pyproj.Proj(init=str(src_crs))
+    
+    if type(target_csr) is pyproj.Proj:
+        ptarget_crs = target_csr
+    elif type(target_csr) is dict:
+        ptarget_crs = pyproj.Proj(target_csr)
+    else:
+        ptarget_crs = pyproj.Proj(init=str(target_csr))
+                                                          
+        
+    if psrc_crs.srs == ptarget_crs.srs:
+        return None
+    
+    
+    transformer = pyproj.Transformer.from_crs(psrc_crs.srs, ptarget_crs.srs, always_xy=True)
+    return transformer
 
     
 def _mapping(ob):
@@ -336,12 +369,20 @@ class Geom():
         return _createFeatureShapely(self.geom,self.properties)
     
     @property
+    def feature(self):
+        return Feature(self.geom,self.properties)
+    
+    @property
     def centroid(self):
         return self.geom.centroid
     
     @property
     def geometry(self):
         return self.geom
+    
+    @property
+    def type(self):
+        return self.geom.geom_type
     
     
     def inside(self, point):
@@ -364,17 +405,33 @@ class Geometries(FeaturesStore):
     Collection of Geoms
     
     '''
+    operations = ('intersects', 'within', 'contains', 'overlaps', 'crosses','touches', 'covers', 'covered_by', 'contains_properly')
     def __init__(self, name = "Geometries"):
         self._geoms = []
         self._tree = None
         self._name = name
         
+        self._meta = None
+        
+        
     def setName(self,name):
         self._name = name
         
+    def setMeta(self,metadata):
+        if not self._meta is None:
+            if str(self._meta.get("crs",None)) != str(metadata.get("crs",None)):
+                raise ValueError("Attempting to merge geometries with different projections")
+            
+        else:
+            self._meta = metadata
+        
     def name(self):
         return self._name 
-        
+    
+    def CRS(self):
+        if not self._meta is None :
+            return self._meta.get("crs",None)
+        return None
         
     def isValid(self):
         return len(self._geoms) > 0 and not self._tree is None
@@ -393,6 +450,7 @@ class Geometries(FeaturesStore):
         # return a deep copy of this collection without calling init
         ngeom  = Geometries()
         ngeom._geoms = [g.clone() for g in self._geoms]
+        ngeom._meta = {**self._meta}
         return ngeom
         
         
@@ -409,13 +467,37 @@ class Geometries(FeaturesStore):
         #print("stree  count {}".format(len(self._tree)))
         
         
-    def intersections(self, geom0):
+    def testValid(self,predicate):
+        if not predicate in Geometries.operations:
+            raise ValueError(f"Unsupported operation '{predicate}'")
         
         if not self._tree:
-            raise ValueError("ApproachGeometries not initialised")
+            raise ValueError("Geometries not initialised")
+        
+
+    def operation(self, predicate, geom0):
+        '''
+        this should be done once not every time
+        if not predicate in Geometries.operations:
+            raise ValueError(f"Unsupported operation '{predicate}'")
+        
+        if not self._tree:
+            raise ValueError("Geometries not initialised")
+        '''
+        indices = self._tree.query(geom0,predicate=predicate)
+        return [self._geoms[i] for i in indices]
+    
+            
+    def intersections(self, geom0):
+        '''
+        if not self._tree:
+            raise ValueError("Geometries not initialised")
     
         indices = self._tree.query(geom0,predicate='intersects')
         return [self._geoms[i] for i in indices]
+        '''
+    
+        return self.operation(self,'intersects', geom0)
     
     
     def mergeAttribute(self, attr,attr2, funclist):
@@ -442,7 +524,12 @@ class Geometries(FeaturesStore):
             
             
     def features(self):
-        return [ g._feature for g in self._geoms]
+        return [ g.feature for g in self._geoms]
+    
+    
+    
+    def geoms(self):
+        return  self._geoms
         
     def __iter__(self):
         return iter(self._geoms)
@@ -457,12 +544,29 @@ class Geometries(FeaturesStore):
     @staticmethod
     def collectGeoms(geoms,geomspath, add_properties = {}):
         import fiona
+        '''
         if not isinstance(geomspath,(list,tuple)):
             geomspath = [geomspath]
-        for g in geomspath:
-            for c in iter(fiona.open(str(g),'r')):
-                props = c["properties"]
-                geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
+        ''' 
+        if isinstance(geomspath,(list,tuple)):
+            gg = fiona.open(geomspath[0],layer=geomspath[1])
+            
+        else:
+            if str(os.path.split(geomspath)[1]).lower() == 'gpkg':
+                geomlayers = fiona.listlayers(geomspath)
+                for l in geomlayers:
+                    gg = fiona.open(str(geomspath),layer=l)
+                    geoms.setMeta(gg.profile)
+                    for c in iter(gg):
+                        props = c["properties"]
+                        geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
+                
+            else:
+                gg = fiona.open(geomspath)
+                geoms.setMeta(gg.profile)
+                for c in iter(gg):
+                    props = c["properties"]
+                    geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
         
     @staticmethod
     def buildInit(geomspath, name = 'Geometries',add_properties = {} ):
@@ -470,8 +574,27 @@ class Geometries(FeaturesStore):
         Geometries.collectGeoms(geoms, geomspath, add_properties)
         geoms.initIndex()
         return geoms          
+    
+    
+    @staticmethod
+    def collectMetadata(geomspath):
+        import fiona
         
-        
+        with fiona.Env():
+            try:
+                if isinstance(geomspath,(list,tuple)):
+                    gg = fiona.open(geomspath[0],layer=geomspath[1])
+                else:
+                    gg = fiona.open(geomspath)
+                    
+                    
+                return gg.profile
+                    
+            except Exception as e:
+                logme(f"Failed loading: {geomspath} {e}")
+
+            
+            
             
     def filterByAttributeFunc(self, func):
         '''

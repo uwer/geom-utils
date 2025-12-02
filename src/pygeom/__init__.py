@@ -9,6 +9,7 @@ DAYS2SEC=HOUR2SEC*24.
 
 import contextlib, time
 
+
 @contextlib.contextmanager
 def stopwatch(context):
     """Context manager to print how long a block of code took."""
@@ -129,6 +130,51 @@ def isValidStr(strval):
     if strval is None:
         return False
     return len(str(strval).strip()) > 0
+
+
+def distanceUnitMultiplier(unit):
+    u = unit.strip().lower()
+    if u == 'm':
+        return 1.
+    elif u == 'mm':
+        return 0.001
+    elif u == 'cm':
+        return 0.01
+    elif u == 'km':
+        return 1000.
+    elif u == 'mi':
+        return 1609.34
+    elif u == 'nm':
+        return 1852.
+    
+    
+
+def convertDistanceIfUnit(value):
+    try:
+        float(value)
+        # no unit string - return value
+        return value
+    except:
+        valsp = str(value).split(" ")
+        if len(valsp) > 1:
+            # so we have a dedicated string
+            multipl = distanceUnitMultiplier(valsp[1])
+            return multipl * float(valsp[0])
+        else:
+            # split by digits
+            allowedchars = ["0","1","3","4","5","6","7","8","9","."]
+            idx = 0
+            for c in str(value):
+                if c in allowedchars:
+                    idx+=1
+                else:
+                    break
+                
+            multipl = distanceUnitMultiplier(str(value)[idx:])
+            return multipl * float(str(value)[:idx])
+            
+        
+        
 
 '''
 A collection of convenience classes to treat 'containers' of geometry collections the same way, 
