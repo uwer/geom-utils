@@ -1,0 +1,32 @@
+Following the execution of
+getLatestOSM.sh that fetches the pbf files from OSM we need to process the content
+
+execute doProcessOSM.sh with first 
+'unzipRelative' 
+then
+'createGPKG'
+
+move the created subdirs using moveCreated
+as 'moveCreated' <target dir>
+
+(independently where its moved to extract the subsets)
+
+in the parent directory of files, that will create subdirectories of the shape files and GPK
+they then have to be moved and consolidated for filtering items
+
+## ensure libraries and packages needed are installed
+use filterOSMAtrributes.py
+in the relevant subsets
+
+after features are subset we can exclude the ones based on geometry functions, i.e. find all within a certain distance of the coast line 
+
+
+
+ 
+ 
+ 
+tar -czf /OSM/CBR/OA_AIS/archive/pgsql-backup/y2025/ais-pgsqlprod-bucket-m10.tgz 2025-10
+
+
+
+
