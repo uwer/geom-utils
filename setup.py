@@ -15,7 +15,8 @@ setup(
         "geographiclib"   ,
         "pandas",
         "numpy",
-        "fiona"
+        "fiona",
+        "concave_hull"
     ],
     
     packages=find_packages(where='src'),
