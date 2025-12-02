@@ -41,14 +41,23 @@ jobs:
         # produces pygeom-0.9-py3-none-any.whl
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
+      #uses: actions/create-release@v1
+      #env:
+      # GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #with:
+      #  tag_name: ${{ env.RELEASE_VERSION }}
+      #  release_name: Release ${{ github.ref_name }}
+      #  draft: false
+      #  prerelease: false
+      uses: ncipollo/release-action@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ env.RELEASE_VERSION }}
-        release_name: Release ${{ github.ref_name }}
+        tag: ${{ env.RELEASE_VERSION }}
+        name: Release ${{ github.ref_name }}
         draft: false
         prerelease: false
+        #makeLatest: true
         allowUpdates: true
     - name: Upload Release Asset
       id: upload-release-asset 
