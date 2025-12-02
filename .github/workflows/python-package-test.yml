@@ -1,0 +1,51 @@
+
+name: Deploy Package
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.10", "3.11","3.12","3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install flake8 pytest setuptools
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Install dependencies
+      run: |
+          python -m pip install --upgrade pip
+          if  [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Build package
+      run: |
+        python setup.py sdist bdist_wheel
+    
+    #- name: Upload wheel artifact
+    #  uses: actions/upload-artifact@v4
+    #  with:
+    #    name: python-wheel
+    #    path: dist/*.whl # Upload all .whl files from the dist directory
+    - name: Publish package
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_OWNER: ${{ github.repository_owner }}
+        TWINE_USERNAME: ${{ github.actor }}
+        TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        pip install twine
+        python -m twine upload --repository-url https://api.github.com/orgs/${{ github.repository_owner }}/packages/pypi/upload dist/*
