@@ -132,18 +132,17 @@ class LoggingDelegate(LogHandler):
         self._doLogMessage(msg)
         
     def _doLogMessage(self,msg,msg_context="Message",msg_type=LogHandler.Info):
-        
-        match msg_type:
-            case LogHandler.Debug:
-                self.logger.debug(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
-            case LogHandler.Warning:
-                self.logger.warn(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
-            case LogHandler.Critical:
-                self.logger.critical(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}') 
-            case LogHandler.Error:
-                self.logger.error(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}') 
-            case _:
-                self.logger.info(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
+        # remove match statement to meet py3.9 constraints
+        if msg_type == LogHandler.Debug:
+            self.logger.debug(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
+        elif msg_type ==  LogHandler.Warning:
+            self.logger.warn(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
+        elif msg_type ==  LogHandler.Critical:
+            self.logger.critical(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}') 
+        elif msg_type == LogHandler.Error:
+            self.logger.error(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}') 
+        else:
+            self.logger.info(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
                         
         
         
