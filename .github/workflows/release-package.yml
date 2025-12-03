@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.9"]
         # MATRIX FOR A PURE LIBS ISN'T REALLY NECESSARY
 
     steps:

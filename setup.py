@@ -4,7 +4,7 @@ setup(
     name='pygeom',
     version='0.9',
     package_dir = {"": "src"},
-    python_requires=">=3.10",
+    python_requires=">=3.9",
     
     url='https://github.com/uwer/geom-utils',
     author='UR',
