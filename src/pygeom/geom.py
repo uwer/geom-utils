@@ -497,7 +497,7 @@ class Geometries(FeaturesStore):
         return [self._geoms[i] for i in indices]
         '''
     
-        return self.operation(self,'intersects', geom0)
+        return self.operation('intersects', geom0)
     
     
     def mergeAttribute(self, attr,attr2, funclist):
