@@ -1,6 +1,7 @@
 import json,os, sys,math
 from copy import deepcopy
 from shapely import wkt,wkb
+import shapely
 from shapely.geometry import (
      shape,Point,
      LineString, MultiPoint, 
@@ -250,6 +251,27 @@ def bufferSpherical(geom, distance_m):
     except Exception as e:
         logme(e)
         raise e
+    
+    
+def centroidFromBBox(bbox):
+    return Point(bbox[0]+(bbox[2]-bbox[0])/2,bbox[1]+(bbox[3]-bbox[1])/2)
+
+def scaleFromPoint(point):
+    '''
+    figure out a generalised scale factor for this location
+    we take the mean from x and y direction
+    
+    '''
+    geom = bufferSpherical(point, 1000.)
+    bbox = geom.bounds
+    xdiff = bbox[2]-bbox[0]
+    ydiff = bbox[3]-bbox[1]
+    
+    return (ydiff+xdiff)/2000.
+    
+    
+    
+    
     
 
 def calcSinuosity(points):
@@ -1239,8 +1261,11 @@ def closestAny(geom,target_geoms,buffer=5000,doprojected=False):
       
     #from shapely.ops import nearest_points
     from shapely import shortest_line
+    if doprojected:
+        qppb = shapely.buffer(geom,buffer)
+    else:
+        qppb = bufferSpherical(geom, buffer)
     
-    qppb = bufferSpherical(geom, buffer)
     distances = list()
     fitems = list()
     
@@ -1297,8 +1322,11 @@ def closestDistance(geom,target_geoms,buffer = 5000,doprojected= False):
       
     #from shapely.ops import nearest_points
     from shapely import shortest_line
-    
-    qppb = bufferSpherical(geom, buffer)
+    if doprojected:
+        qppb = shapely.buffer(geom,buffer)
+    else:
+        qppb = bufferSpherical(geom, buffer)
+        
     distances = list()
     fitems = list()
     
@@ -1355,9 +1383,12 @@ def closestSegmentDistance(geom_ls,target_geoms,buffer = 5000,doprojected= False
         fstore = target_geoms
     else:
         raise ValueError(f"expecting list or single instance of 'FeaturesStore' don't know what to do with {target_geoms}")
-      
-    qppb = bufferSpherical(geom_ls, buffer)
-      
+    
+    if doprojected:
+        qppb = shapely.buffer(geom_ls,buffer)
+    else:
+        qppb = bufferSpherical(geom_ls, buffer)
+        
     inter_geoms = fstore.intersections(qppb)
     if len(inter_geoms) > 0:
                 
