@@ -1,7 +1,7 @@
 shapely
 pyproj>=2.1.0
 geographiclib
-pandas
+pandas>=2.3
 numpy
 fiona
 concave_hull

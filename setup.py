@@ -13,7 +13,7 @@ setup(
         "shapely",
         "pyproj",
         "geographiclib"   ,
-        "pandas",
+        "pandas>=2.3",
         "numpy",
         "fiona",
         "concave_hull"
