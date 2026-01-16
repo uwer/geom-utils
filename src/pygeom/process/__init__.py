@@ -97,6 +97,8 @@ class LogHandler():
     def cancel(self):
         pass
     
+    def id(self):
+        return self.__name
     
     def progress(self) -> float:
         return self._progress

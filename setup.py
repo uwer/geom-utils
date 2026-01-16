@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='pygeom',
-    version='0.9',
+    version='0.9.1',
     package_dir = {"": "src"},
     python_requires=">=3.9",
     
