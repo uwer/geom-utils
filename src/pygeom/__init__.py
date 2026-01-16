@@ -57,7 +57,7 @@ def mergeJsonDicts(jsondicts):
 
 
     
-def mergeCSV(fileroot, wildcard):
+def mergeCSV(fileroot, wildcard, setindex= None):
     """
     Merge a list of csv files as a result of the wildcard list,
     The wildcard has to be complete based on the Path.glob paradigm (shell script resolving, not regex)
@@ -70,9 +70,15 @@ def mergeCSV(fileroot, wildcard):
     frames  = []
     flist = list(proot.glob(wildcard))
     print("have n files {}".format(len(flist)))
-    for f in flist:
-        frames.append(pd.read_csv(str(f)))
-        
+    if len(flist) < 1:
+        raise ValueError(f"no files found under {fileroot} with {wildcard}")
+    
+    if setindex is None:
+        for f in flist:
+            frames.append(pd.read_csv(str(f)))
+    else:
+        for f in flist:
+            frames.append(pd.read_csv(str(f)).set_index(setindex))
         
     return pd.concat(frames), len(flist)
 

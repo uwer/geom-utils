@@ -27,6 +27,13 @@ METRIC_PROCEJTION=pyproj.CRS("EPSG:3995")
 
 DOTRACK = False
 
+PROFILES = {"geojson":{"driver":"GeoJSON","properties":{},"crs":None,"schema":{"geometry":""}},
+            "json":{"driver":"GeoJSON","properties":{},"crs":None,"schema":{"geometry":""}},
+            "shp":{"driver":"ESRI Shapefile","properties":{},"crs":None,"schema":{"geometry":""}},
+            "fgb":{"driver":"FlatGeobuf","properties":{},"crs":None,"schema":{"geometry":""}}}
+
+SUFFIX4DRIVER = {"GeoJSON":"geojson","ESRI Shapefile":"shp","FlatGeobuf":"fgb"}
+
 def createTransferProj(src_crs,target_csr):
     '''
     Create the projection transform function for geometries,
@@ -384,7 +391,14 @@ class Geom():
         return Geom(wkb.loads(wkb.dumps(self.geom)),deepcopy(self.properties))
         
     def __repr__(self):
-        return "[{},{}]".format(self.geom.wkt,json.dumps(self.properties)) 
+        return "[{},{}]".format(self.geom.wkt,json.dumps(self.properties))
+    
+    @property
+    def __geo_interface__(self):
+        from pygeom import _exportJsonProperties
+        return {"geometry": self.geom.__geo_interface__ ,
+        "properties": _exportJsonProperties(self.properties)
+        }
     
     @property
     def _feature(self):
@@ -446,7 +460,22 @@ class Geometries(FeaturesStore):
             
         else:
             self._meta = metadata
+            
+    def getMetaSchema(self, key):
+        '''
+        return the schema entry or None if not exists
+        '''
+        if self._meta is None:
+            return None
+        if key is None:
+            return self._meta.get("schema",{})
+        return self._meta.get("schema",{}).get(key,None)
         
+    def getMetaDriver(self):
+        if self._meta is None:
+            return None
+        return self._meta.get("driver",None)
+    
     def name(self):
         return self._name 
     
@@ -468,10 +497,11 @@ class Geometries(FeaturesStore):
         self._geoms = None
         self._tree = None
         
-    def clone(self):
+    def clone(self, empty = False):
         # return a deep copy of this collection without calling init
         ngeom  = Geometries()
-        ngeom._geoms = [g.clone() for g in self._geoms]
+        if not empty:
+            ngeom._geoms = [g.clone() for g in self._geoms]
         ngeom._meta = {**self._meta}
         return ngeom
         
@@ -549,6 +579,14 @@ class Geometries(FeaturesStore):
         return [ g.feature for g in self._geoms]
     
     
+    def hasGeomId(self,gid,attr='id'):
+        #test if the geometry with this id already exists 
+        for g in self._geoms:
+            if g.attribute(attr) == gid:
+                return True
+            
+        return False
+        
     
     def geoms(self):
         return  self._geoms
@@ -703,7 +741,30 @@ class Geometries(FeaturesStore):
             reslist.append("{}:{}".format(name_key,str(g.properties(name_key))))
                             
         return ",".join(reslist)
-
+    
+    
+    def save(self, pathname, additionalProperties = None):
+        import fiona
+        #with fiona.Env():
+        profile = {**self._meta}
+        if additionalProperties:
+            if isinstance(additionalProperties,dict):
+                for a in additionalProperties:
+                    profile['schema']['properties'][a]=additionalProperties[a]
+            else:
+                for a in additionalProperties:
+                    profile['schema']['properties'][a]='str'
+                    
+                    
+        with fiona.open(pathname, "w", **profile) as dst:
+            ngeoms = len(self._geoms)
+            print(f"Saving nfeatures {ngeoms}")
+            for i,g in enumerate(self._geoms):
+                dst.write(g.__geo_interface__)
+                
+                if i % 1000 == 0:
+                    print(f"saved n features: {i}")
+         
 
 
 def find_min_y_point(list_of_points):
@@ -1476,7 +1537,7 @@ def doWithin(geom,w_geom,doprojected=False):
         
 def findFirst(p,w_geom_collection , buffer = 5000, reverse = True, doprojected = False):
     '''
-    There may be more than one Port dataset, so iterate through starting from the back if reversed is true
+    There may be more than one dataset, so iterate through starting from the back if reversed is true
     Every entry in the collection may have its own set of attributes to be mapped
     
     '''  
@@ -1497,4 +1558,72 @@ def findFirst(p,w_geom_collection , buffer = 5000, reverse = True, doprojected =
             
             
     return None, None
+
+
+def union(inputgeom, overlaygeoms, outputgeom, buffer = 0.005, id_attrib= 'id',migrateAttr = []):
+    '''
+    
+    select all geometries in input geom that overlap with overlay, in essence a union of 2 geometries.
+    If overlay is a point geometry we add a tiny buffer or 'buffer' if not negative
+    
+    migrateAttr - if not none/empty, copythe attributes from overlay to input
+    
+    '''
+    
+    ingeoms = Geometries.buildInit(inputgeom)
+    overgeoms = Geometries.buildInit(overlaygeoms)
+    
+    outputgeoms = ingeoms.clone(True)
+    count = 0
+    reported = 0
+    totallen = len(overgeoms.geoms())
+    
+    
+    migrateAttrTypes = None
+    # extract the additional property dtypes to pass to the save call
+    if migrateAttr:
+        migrateAttrTypes = {}
+        proptypes  = overgeoms.getMetaSchema("properties")
+        # blows if None
+        for a in migrateAttr:
+            migrateAttrTypes[a] = str(proptypes[a])
+    
+    if overgeoms.getMetaSchema('geometry') == 'Point' and buffer > 0:
+        # 0.005 deg assume epsg:4326
+        print (f"Union with buffer {buffer}")
+        for go in overgeoms.geoms():
+            intersectgeoms = ingeoms.intersections(go.geometry.buffer(buffer))
+            for igeo in intersectgeoms:
+                if not outputgeoms.hasGeomId(igeo.attribute(id_attrib), id_attrib):
+                    clobeigo = igeo.clone()
+                    for a in migrateAttr:
+                        clobeigo.properties[a] = go.attribute(a)
+                    outputgeoms.append(clobeigo)
+            count+=1
+            percent =count/totallen*100
+            if int(percent) % 5 == 0 and reported < int(percent):
+                reported= int(percent)
+                print(f"Tested {int(percent)}% of {totallen}")
+    else:
+        print (f"Union without buffer")
+        for go in overgeoms.geoms():
+            intersectgeoms = ingeoms.intersections(go.geometry)
+            for igeo in intersectgeoms:
+                if not outputgeoms.hasGeomId(igeo.attribute(id_attrib), id_attrib):
+                    clobeigo = igeo.clone()
+                    for a in migrateAttr:
+                        clobeigo.properties[a] = go.attribute(a)
+                    outputgeoms.append(clobeigo)
+        
+            count+=1
+            percent =count/totallen*100
+            if int(percent) % 5 == 0  and reported < int(percent):
+                reported= int(percent)
+                print(f"Tested {int(percent)}% of {totallen}")
+
+    
+    outputgeoms.save(outputgeom,migrateAttrTypes)
+    
+    
+
 
