@@ -1,4 +1,12 @@
+"""
+Extract weekly subsets of the data and count the occurrence of events (Points) within the provided geometries. Add the count and temporal stats as attribute to the geometry.
 
+The process will produce multiple geometries at the same location for different weeks. Geometries that do have a count of 0 are removed.
+We keep a track on the first and last match as well as calculate the mean timestamp for the occurrences
+ 
+I.e. - point appears inside polygon, increment count by one for said polygon for that week.  
+
+"""
 
 
 from pygeom.geom import Geom, Geometries,_assignRandomId
@@ -6,15 +14,15 @@ from pygeom import stopwatch, mergeCSV,_createFeaturCollection
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import json
+import json, sys, os
 from functools import partial
 from copy import deepcopy
 
 
 
-def extractWeeks(geompath,df,column_defs,pdump = None,**kwargs):
+def extractWeeks(geompath,df,column_defs,pdump = None, options={}):
     '''
-    extract weekly subsets of the data and count the occurance of events in the provided geometries.
+    extract weekly subsets of the data and count the occurrences of events in the provided geometries.
     if we have a "matchid" we also produce a dataframe with the results per week, this will create a substantial time and memory increase
     
     geompath - a reference to the geometries we will match to
@@ -23,7 +31,7 @@ def extractWeeks(geompath,df,column_defs,pdump = None,**kwargs):
     pdump - out path
     
     result - a collection of geometries with attributes added to reflect the weekly count, there will be a geometry in the same location for every week!
-    if we also produce a dataframe, there will be a column for every week matching the matchid as row indentifier. Additional summaries per qurter and annual are added at the end
+    if we also produce a dataframe, there will be a column for every week matching the matchid as row indentifier. Additional summaries per 12 weeks and annual are added at the end
     
     '''
 
@@ -64,18 +72,13 @@ def extractWeeks(geompath,df,column_defs,pdump = None,**kwargs):
     
     applyMeanFunc = partial(dtMean,"times")    
     
-    
-    matchid = None
-    dfall =  None
+
     # if we have a "matchid" we also produce a dataframe with the results per week, 
-    # this may create a substantial time and memory increase
-    if "matchid" in kwargs:
-        matchid  = kwargs["matchid"]
-        
-        
-        
-    #for w in range(1,53):
-    #   dff = df[df[coords[-1]].dt.isocalendar().week == w]
+    # this may create a substantial time and memory increase    
+    matchid = options.get("matchid",None)
+    dfall =  None
+
+
     with stopwatch("apply weekly scan"):
         nweeks = len(mrange)
         print(f"processing weeks {nweeks}")
@@ -83,10 +86,10 @@ def extractWeeks(geompath,df,column_defs,pdump = None,**kwargs):
             dff = df[(df[column_defs[-1]].dt.year == md.year) & (df[column_defs[-1]].dt.isocalendar().week == md.isocalendar().week)]
     
             # returns a Geometries object with attributes amended according to count
+            # the geometry is read anew for every round/week
             geoms, dfout = match2Geoms(dff,geompath,column_defs,["count","times"],add_properties = {"count":0,"times":[]}, geom_id = matchid)
             
-            #geoms.mergeAttribute("times","times-2",[min,max])
-            #newfeatures  = geoms.features()
+
             
             #geoms.applyAttributes("count2",applyFunc)
             fgeomlist = geoms.filterByAttributeFunc(applyFilterFunc)
@@ -112,12 +115,8 @@ def extractWeeks(geompath,df,column_defs,pdump = None,**kwargs):
                 featuregeom.append(g)
                     
             print(f"processed {i} of {nweeks} added {len(fgeomlist)}")
-            #newfeatures  = [g._feature for g in fgeomlist]
-            #features.extend(newfeatures)
-            
-        #with open(os.path.join(froot,dumpfile+".json"),'w') as fp:
-        #    json.dump(fc,fp)
-        #jp.savefig(os.path.join(froot,dumpfile+".png"))
+
+    
     if pdump:
         pdump = Path(pdump)
         prefix = pdump.parent.name
@@ -141,6 +140,7 @@ def extractWeeks(geompath,df,column_defs,pdump = None,**kwargs):
             
         outfile = pdump.joinpath(f"{prefix}-weeks.{SUFFIX4DRIVER[featuregeom.getMetaDriver()]}")
             
+        # add teh additional attributes, otherwise some output formats such as FGB will fail
         featuregeom.save(outfile,{"count":"int","times":"int","tmin":"datetime","tmax":"datetime","tmean":"datetime"})
         
         if not matchid is None:
@@ -166,7 +166,7 @@ def extractWeeks(geompath,df,column_defs,pdump = None,**kwargs):
                     md2 =  mrange[-1]
                     msubrange = [f"{md.year}-{md.isocalendar().week}" for md in mrange[weekq:-1]]
                 else:
-                    md2 =  mrange[weekq2]
+                    md2 =  mrange[weekq2-1]
                     msubrange = [f"{md.year}-{md.isocalendar().week}" for md in mrange[weekq:weekq2]]
                     
                 label = f"{md1.year}-{md1.isocalendar().week}-{md2.year}-{md2.isocalendar().week}"
@@ -193,10 +193,6 @@ def extractWeeks(geompath,df,column_defs,pdump = None,**kwargs):
             dfall.to_csv(outfiledf)
 
             
-        '''
-        with pdump.joinpath(f"{prefix}-weeks.json").open('w') as fp:
-            json.dump(_createFeaturCollection(features),fp)
-        ''' 
     
     #plotKDE(df,coords,minmax)
     print("done for weeks")
@@ -238,7 +234,7 @@ def match2Geoms(df,geomspath,column_defs,keys,add_properties = {}, geom_id = Non
     return geoms,dfout
     
     
-def scanDFInside(geompath, df, column_defs, filter = None , outpath = None, **kwargs):
+def scanDFInside(geompath, df, column_defs, filter = None , outpath = None, options={}):
         
     
     df[column_defs[-1]] = pd.to_datetime(df[column_defs[-1]])
@@ -256,7 +252,7 @@ def scanDFInside(geompath, df, column_defs, filter = None , outpath = None, **kw
     #minmaxlon = dff[column_defs[0]].agg(['min', 'max'])
     #minmaxlat = dff[column_defs[1]].agg(['min', 'max'])
     with stopwatch(f"Processing weeks .."):
-        extractWeeks(geompath, dff, column_defs,pdump = outpath, **kwargs)
+        extractWeeks(geompath, dff, column_defs,pdump = outpath, options=options)
     
     
     
@@ -265,7 +261,7 @@ def scanDFInside(geompath, df, column_defs, filter = None , outpath = None, **kw
     
     
 
-def combineDFscan(geompath, dfpaths,column_defs, wc = None, filter = None , outpath = None, **kwargs):
+def combineDFscan(geompath, dfpaths,column_defs, wc = None, filter = None , outpath = None, options = {}):
     
     with stopwatch(f"Process subset on filter {filter}"):
             
@@ -278,7 +274,7 @@ def combineDFscan(geompath, dfpaths,column_defs, wc = None, filter = None , outp
             df = pd.read_csv(froot)
         
 
-    return scanDFInside(geompath,df, column_defs, filter,outpath = outpath , **kwargs )
+    return scanDFInside(geompath,df, column_defs, filter,outpath = outpath , options=options )
         
         
         
@@ -304,39 +300,49 @@ if __name__ == "__main__":
     
     
     
-    '''
-    testConcat("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais/fc009e67-9cd",
-               "ais-week-*.csv",
-               "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2024/fc009e67")
-    '''
+    if len(sys.argv) > 1:
+        with open(sys.argv[1],'r') as fp:
+            config = json.load(fp)
+            
+        config = config["params"]
+        combineDFscan(**config)
     
     
-    combineDFscan("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/grid_centre_frdc.sub.rect.exact2.fgb",
-              "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2024/fc009e67-8fb",
-              ["lon","lat","timestamp"],
-              wc="**/calc_data.csv",
-              filter= "`score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
-              outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais/fc009e67-9cd",**{"matchid":"grid_id"})
+    else:
+            
+        '''
+        testConcat("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais/fc009e67-9cd",
+                   "ais-week-*.csv",
+                   "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2024/fc009e67")
+        '''
+        
+        combineDFscan(geompath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/grid_centre_frdc.sub.rect.exact2.fgb",
+                  dfpaths="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2024/fc009e67-8fb",
+                  column_defs=["lon","lat","timestamp"],
+                  wc="**/calc_data.csv",
+                  filter= "`score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
+                  outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais/fc009e67-000",
+                  options={"matchid":"grid_id"})
+        
+        '''
+        combineDFscan("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/grid_centre_frdc.sub.rect.fgb",
+                  "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2025",
+                  ["Lon","Lat","MsgTime"],
+                  wc="**/calc_data.csv",
+                  filter= None,#" `score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
+                  outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais")
+        
+        '''
+    """
+    #"/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/scan",   
     
-    '''
-    combineDFscan("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/grid_centre_frdc.sub.rect.fgb",
-              "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2025",
-              ["Lon","Lat","MsgTime"],
-              wc="**/calc_data.csv",
-              filter= None,#" `score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
-              outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais")
-    
-    '''
-"""
-#"/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/scan",   
-
-combineDFscan("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/grid2.json",
-              "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/qgis",
-              ["Lon","Lat","MsgTime"],
-              wc="503*/calc_data.csv",
-              filter= " `score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
-              outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/scan/ais")
-              
+    combineDFscan("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/grid2.json",
+                  "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/qgis",
+                  ["Lon","Lat","MsgTime"],
+                  wc="503*/calc_data.csv",
+                  filter= " `score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
+                  outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/scan/ais")
+                  
 
 #[[152.,-32.5],[154.5,-27.0]],
 """

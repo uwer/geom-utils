@@ -1,0 +1,21 @@
+{
+	"params": {
+	# the geometry to scan onto
+		"geompath":"", 
+	# the root directory where to find the csv files
+		"dfpaths":"",
+	# the wildcard expression to apply for selection
+		"wildcard":"",
+	# the expected column headers to use representing in order [Longitude, Latitude, timestamp]
+		"columnsDefs": [
+		],
+	# the output directory
+		"outpath": "",
+	# the pandas query string to apply for subsetting 
+		"filter": null,
+	# options to assign 
+	# a matchid -> an attribute in the geometry to then also create a csv file with the respective output, the matchid will be the index label
+		"options": {
+		}
+	}
+}
