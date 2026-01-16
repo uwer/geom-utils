@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9"]
+        python-version: ["3.10"]
         # MATRIX FOR A PURE LIBS ISN'T REALLY NECESSARY
 
     steps:
@@ -41,8 +41,11 @@ jobs:
         echo "WHEEL_VERSION=${VERSION}" >> $GITHUB_ENV
         #python setup.py sdist bdist_wheel
         python -m build --wheel
-        mv dist/pygeom* .
-        zip pygeom-${{ env.WHEEL_VERSION }}-scripts.zip ./scripts pygeom-${{ env.WHEEL_VERSION }}-py3-none-any.whl
+        mv ./dist/pygeom-${VERSION}-py3-none-any.whl .
+         
+        ls -l .  
+         
+        zip pygeom-${VERSION}-scripts.zip ./scripts pygeom-${VERSION}-py3-none-any.whl
         
         # produces pygeom-${{ env.WHEEL_VERSION }}-py3-none-any.whl
           
@@ -53,7 +56,10 @@ jobs:
       with:
         #upload_url: ${{ steps.create_release.outputs.upload_url }} 
         # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        files: ./dist/pygeom-${{ env.WHEEL_VERSION }}-py3-none-any.whl pygeom-${{ env.WHEEL_VERSION }}-scripts.zip
+        files: |
+          ./pygeom-${{ env.WHEEL_VERSION }}-py3-none-any.whl 
+          ./pygeom-${{ env.WHEEL_VERSION }}-scripts.zip
+          
         draft: false
         tag_name: ${{ env.RELEASE_VERSION }}
         prerelease: false
