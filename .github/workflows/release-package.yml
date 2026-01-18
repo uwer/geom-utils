@@ -43,7 +43,7 @@ jobs:
         python -m build --wheel
         mv ./dist/pygeom-${VERSION}-py3-none-any.whl .
         #ls -l .  
-        zip pygeom-${VERSION}-scripts.zip ./scripts pygeom-${VERSION}-py3-none-any.whl
+        zip -r pygeom-${VERSION}-scripts.zip ./scripts pygeom-${VERSION}-py3-none-any.whl
         
         # produces pygeom-${{ env.WHEEL_VERSION }}-py3-none-any.whl
           
