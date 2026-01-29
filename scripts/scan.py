@@ -8,11 +8,23 @@ I.e. - point appears inside polygon, increment count by one for said polygon for
 
 """
 
+exampleConfig = {
+    "params": {
+        "geompath": "",
+        "dfpaths": "",
+        "wildcard": "",
+        "columnsDefs": [
+        ],
+        "outpath": "",
+        "filterq": None,
+        "options": {
+        }
+    }
+}
 
 from pygeom.geom import Geom, Geometries,_assignRandomId
 from pygeom import stopwatch, mergeCSV,_createFeaturCollection
 import pandas as pd
-import numpy as np
 from pathlib import Path
 import json, sys, os
 from functools import partial
@@ -62,7 +74,7 @@ def extractWeeks(geompath,df,column_defs,pdump = None, options={}):
     def apply(func, attr, props):
         return func(props[attr])
     
-    applyFunc = partial(matchByLength,"times")  
+    #applyFunc = partial(matchByLength,"times")  
     
     applyFilterFunc = partial(filterByCount,"count") 
     
@@ -127,7 +139,7 @@ def extractWeeks(geompath,df,column_defs,pdump = None, options={}):
             
         from pygeom.geom import SUFFIX4DRIVER,PROFILES, epsg4326Proj
         if featuregeom.getMetaDriver() is None:
-            profile = deepcopyPROFILES["fgb"]
+            profile = deepcopy(PROFILES["fgb"])
             profile["schema"]["geometry"] = "Polygon"
             profile["crs"] = epsg4326Proj
             featuregeom.setMeta(PROFILES["fgb"])
@@ -145,7 +157,6 @@ def extractWeeks(geompath,df,column_defs,pdump = None, options={}):
         
         if not matchid is None:
             dfall.info()
-            print(dfall['2024-3'].sum())
             
             # all sum all
             md1 = mrange[0]
@@ -211,12 +222,12 @@ def match2Geoms(df,geomspath,column_defs,keys,add_properties = {}, geom_id = Non
     geometries = [[Point(x,y),dt] for x, y, dt in zip(df[column_defs[0]], df[column_defs[1]],df[column_defs[-1]])]
     dfout = None
     if not geom_id is None:
-       dfout = pd.DataFrame(columns=[geom_id,keys[0]])
-       dfout[geom_id] = [str(g.properties[geom_id]) for g in  geoms.geoms()]
-       dfout[keys[0]] = len(geoms.geoms()) * [0]
-       dfout.set_index(geom_id, inplace=True)
-       idx = dfout.columns.get_loc(keys[0])
-       #print(f"{dfout.columns} - {len(dfout.index)}")
+        dfout = pd.DataFrame(columns=[geom_id,keys[0]])
+        dfout[geom_id] = [str(g.properties[geom_id]) for g in  geoms.geoms()]
+        dfout[keys[0]] = len(geoms.geoms()) * [0]
+        dfout.set_index(geom_id, inplace=True)
+        idx = dfout.columns.get_loc(keys[0])
+        #print(f"{dfout.columns} - {len(dfout.index)}")
        
        
     for p, dt in geometries:
@@ -234,67 +245,50 @@ def match2Geoms(df,geomspath,column_defs,keys,add_properties = {}, geom_id = Non
     return geoms,dfout
     
     
-def scanDFInside(geompath, df, column_defs, filter = None , outpath = None, options={}):
+def scanDFInside(geompath, df, column_defs, filterq = None , outpath = None, options={}):
         
     
     df[column_defs[-1]] = pd.to_datetime(df[column_defs[-1]])
-    if filter:
+    if filterq:
         with stopwatch("apply filter"):
-            dff = df.query(filter)
+            dff = df.query(filterq)
             dff.info()
             nfilter_points = len(dff.index)
             print(f" filtered npoints {nfilter_points}")
     else:
         dff = df
         
-    
-    
-    #minmaxlon = dff[column_defs[0]].agg(['min', 'max'])
-    #minmaxlat = dff[column_defs[1]].agg(['min', 'max'])
+  
     with stopwatch(f"Processing weeks .."):
         extractWeeks(geompath, dff, column_defs,pdump = outpath, options=options)
     
     
-    
+    if options.get("save-source",False) and not outpath is None:
+        df.to_csv(os.path.join(outpath,"source_combined.csv"))
+        if filter:
+            dff.to_csv(os.path.join(outpath,"source_filtered.csv"))
     
     
     
     
 
-def combineDFscan(geompath, dfpaths,column_defs, wc = None, filter = None , outpath = None, options = {}):
+def combineDFscan(geompath, dfpaths,columnsDefs, wildcard = None, filterq = None , outpath = None, options = {}):
     
     with stopwatch(f"Process subset on filter {filter}"):
             
-        if not wc is None:
+        if not wildcard is None:
             with stopwatch("merging files"):
-                df,nf  = mergeCSV(dfpaths,wc)
+                df,_  = mergeCSV(dfpaths,wildcard)
                 df.info()
         else:
             # assuming a file
-            df = pd.read_csv(froot)
+            df = pd.read_csv(dfpaths)
         
 
-    return scanDFInside(geompath,df, column_defs, filter,outpath = outpath , options=options )
+    return scanDFInside(geompath,df, columnsDefs, filterq, outpath = outpath , options=options )
         
         
-        
-def testConcat(indir, wc,outdir):
-    dfall,_ = mergeCSV(indir,wc,setindex = "grid_id" )
-    
-
-    dfall.info()
-    
-    #dflist = [df.set_index('grid_id',inplace=True) for df in dflist]
-    
-    #dfall = pd.concat(dflist, ignore_index=True)
-    #dfall2 = pd.concat(dflist, ignore_index=True,axis=1)
-    #dfall.set_index('grid_id',inplace=True)
-    
-    
-    print(dfall['2024-1'].sum())
-    #print(dfall2[2].sum(axis=1))
-    
-    
+          
         
 if __name__ == "__main__":
     
@@ -310,39 +304,18 @@ if __name__ == "__main__":
     
     else:
             
-        '''
-        testConcat("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais/fc009e67-9cd",
-                   "ais-week-*.csv",
-                   "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2024/fc009e67")
-        '''
-        
-        combineDFscan(geompath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/grid_centre_frdc.sub.rect.exact2.fgb",
-                  dfpaths="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2024/fc009e67-8fb",
-                  column_defs=["lon","lat","timestamp"],
-                  wc="**/calc_data.csv",
-                  filter= "`score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
-                  outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais/fc009e67-000",
-                  options={"matchid":"grid_id"})
         
         '''
-        combineDFscan("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/grid_centre_frdc.sub.rect.fgb",
-                  "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/output2025",
-                  ["Lon","Lat","MsgTime"],
-                  wc="**/calc_data.csv",
-                  filter= None,#" `score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
-                  outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/frdc/scan/ais")
+        example
+        
+        combineDFscan(geompath="grid_centre_frdc.sub.rect.exact2.fgb",
+                  dfpaths="intput",
+                  columnsDefs=["Lon","Lat","MsgTime"],
+                  wildcard="**/calc_data.csv",
+                  filterq = " `hmm-activity` == 'fishing' ",
+                  outpath="output",
+                  options={"matchid":"grid_id","save-source":True})
         
         '''
-    """
-    #"/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/scan",   
-    
-    combineDFscan("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/grid2.json",
-                  "/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/qgis",
-                  ["Lon","Lat","MsgTime"],
-                  wc="503*/calc_data.csv",
-                  filter= " `score-activity` == 'fishing' or `hmm-activity` == 'fishing' ",
-                  outpath="/Users/ros260/projects/data/AIS_VMS/AIS/nsw/2025-combined/density/scan/ais")
-                  
-
-#[[152.,-32.5],[154.5,-27.0]],
-"""
+        print("not defined ")
+        sys.exit(1)

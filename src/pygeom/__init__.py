@@ -8,7 +8,7 @@ HOUR2SEC=3600.
 DAYS2SEC=HOUR2SEC*24.
 
 import contextlib, time
-
+from pathlib import Path
 
 @contextlib.contextmanager
 def stopwatch(context):
@@ -57,18 +57,45 @@ def mergeJsonDicts(jsondicts):
 
 
     
-def mergeCSV(fileroot, wildcard, setindex= None):
+def mergeCSVList(flist, setindex= None):
+    print("have n files {}".format(len(flist)))
+    import pandas as pd
+    frames  = []
+    
+    if setindex is None:
+        for f in flist:
+            frames.append(pd.read_csv(str(f)))
+    else:
+        for f in flist:
+            frames.append(pd.read_csv(str(f)).set_index(setindex))
+        
+    return pd.concat(frames), len(flist)
+
+    
+def mergeCSV(fileroot, wildcard = None, setindex= None):
     """
-    Merge a list of csv files as a result of the wildcard list,
+    Merge a list of csv files as a result of the wildcard search,
     The wildcard has to be complete based on the Path.glob paradigm (shell script resolving, not regex)
     It is a vertical merge! 
+    
+    'setindex' maybe provided and is applied to all read files before merging, this would allow a horizontal merge
+    
     """
     
-    from pathlib import Path
     import pandas as pd
+    
+    if wildcard is None:
+        fileroot, wildcard = findPathlibWCparent(fileroot)
+    
     proot = Path(fileroot)
-    frames  = []
+    
     flist = list(proot.glob(wildcard))
+    if len(flist) < 1:
+        raise ValueError(f"no files found under {fileroot} with {wildcard}")
+    return mergeCSVList(flist,setindex)
+
+    """
+    
     print("have n files {}".format(len(flist)))
     if len(flist) < 1:
         raise ValueError(f"no files found under {fileroot} with {wildcard}")
@@ -81,7 +108,7 @@ def mergeCSV(fileroot, wildcard, setindex= None):
             frames.append(pd.read_csv(str(f)).set_index(setindex))
         
     return pd.concat(frames), len(flist)
-
+    """
       
 def encodeDumpPath(dtime = datetime.utcnow()):
     '''
@@ -117,6 +144,29 @@ def validMMSI(mmsi, repattern = mmsi_regex):
 
     '''
     return not repattern.match(str(mmsi)) is None
+    
+    
+def findPathlibWCparent(pp:Path):
+    '''
+    Find the highest offset in a parent path that contains a glob charater
+    For a scenario where a Path does not exist and contains a glob char in a name.
+    return the existing path component and the rest as wildcard expression to be used in glob
+    '''
+    pathlibGlobChars = ["*","?","["]
+    parents = None
+    i = 0 
+    for i, p in enumerate(reversed(pp.parents)):
+        if any(gk in p.name for gk in pathlibGlobChars):
+            break
+        parents = p
+    if len(pp.parents) == len(parents.parts):
+        # no wildcard in parents
+        return parents,pp.name
+
+    return Path(parents), os.path.join(*pp.parts[i:])
+        
+    
+    
     
     
     

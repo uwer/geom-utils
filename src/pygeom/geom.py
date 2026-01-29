@@ -548,7 +548,7 @@ class Geometries(FeaturesStore):
         indices = self._tree.query(geom0,predicate='intersects')
         return [self._geoms[i] for i in indices]
         '''
-    
+        #print(geom0)
         return self.operation('intersects', geom0)
     
     
@@ -632,6 +632,18 @@ class Geometries(FeaturesStore):
     def buildInit(geomspath, name = 'Geometries',add_properties = {} ):
         geoms = Geometries(name)
         Geometries.collectGeoms(geoms, geomspath, add_properties)
+        geoms.initIndex()
+        return geoms  
+    
+    
+    @staticmethod
+    def buildInitMerge(geomspaths, name = 'Geometries',add_properties = {} ):
+        geoms = Geometries(name)
+        if not isinstance(geomspaths, (list,tuple)):
+            return Geometries.buildInit(geomspaths,name,add_properties)
+        
+        for gpath in geomspaths:
+            Geometries.collectGeoms(geoms, gpath, add_properties)
         geoms.initIndex()
         return geoms          
     
