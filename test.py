@@ -80,7 +80,28 @@ def test_fioanGPKG(infile, outfile,append = False):
     writeToSHP(infile, outfile)
 
 
-#test_fioanGPKG("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_pointgeom.json","/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_pointgeom-v3.gpkg")
-test_fioanGPKG("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_linegeom.json","/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_pointgeom-v4.gpkg")
+def test_fioanMeta(geomspath):
+    import fiona
+        
+    with fiona.Env():
+        try:
+            if isinstance(geomspath,(list,tuple)):
+                gg = fiona.open(geomspath[0],layer=geomspath[1])
+            else:
+                gg = fiona.open(geomspath)
+                
+                print (gg.profile)
+            return gg.profile
+                
+        except Exception as e:
+            print(f"Failed loading: {geomspath} {e}")
 
+    
+    
+
+#test_fioanGPKG("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_pointgeom.json","/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_pointgeom-v3.gpkg")
+#test_fioanGPKG("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_linegeom.json","/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_pointgeom-v4.gpkg")
+
+
+test_fioanMeta("/Users/ros260/projects/data/AIS_VMS/AIS/nsw/test-pygeom/v0-4-2025.v2/4591b9/Vessel_45626_pointgeom-v4.gpkg")
 

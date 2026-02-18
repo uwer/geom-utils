@@ -1,4 +1,4 @@
-import json,os, sys,math
+import json,os, sys,math, time
 from copy import deepcopy
 from shapely import wkt,wkb
 import shapely
@@ -14,7 +14,7 @@ from random import randrange
 from collections.abc import Iterable
 
 
-from pygeom import logme, _createFeatureShapely, Feature
+from pygeom import logme, _createFeatureShapely, Feature, stopwatch
 
 from datetime import datetime, date
 from _datetime import timedelta
@@ -448,7 +448,7 @@ class Geometries(FeaturesStore):
         self._name = name
         
         self._meta = None
-        
+        self._idindex = None
         
     def setName(self,name):
         self._name = name
@@ -528,6 +528,12 @@ class Geometries(FeaturesStore):
         
 
     def operation(self, predicate, geom0):
+        """
+        predicate : {None, 'intersects', 'within', 'contains', 'overlaps', 'crosses',\
+            'touches', 'covers', 'covered_by', 'contains_properly'}, optional
+            The predicate to use for testing geometries from the tree
+            that are within the input geometry's bounding box.
+        """
         '''
         this should be done once not every time
         if not predicate in Geometries.operations:
@@ -541,14 +547,6 @@ class Geometries(FeaturesStore):
     
             
     def intersections(self, geom0):
-        '''
-        if not self._tree:
-            raise ValueError("Geometries not initialised")
-    
-        indices = self._tree.query(geom0,predicate='intersects')
-        return [self._geoms[i] for i in indices]
-        '''
-        #print(geom0)
         return self.operation('intersects', geom0)
     
     
@@ -586,6 +584,37 @@ class Geometries(FeaturesStore):
                 return True
             
         return False
+    
+    def removeGeomById(self,gid,attr='id'):
+        #test if the geometry with this id already exists 
+        gd = self.__getByIndex(gid)
+        '''
+        for g in self._geoms:
+            if g.attribute(attr) == gid:
+                gd = g
+                break
+        ''' 
+        if not gd is None:
+            self._geoms.remove(gd)
+            del self._idindex[gid]
+            return True
+        return False
+        
+        
+    def __getByIndex(self,gid):
+        # a corresponding index should be setup ...
+        try:
+            return self._idindex[gid]
+        except:
+            return None
+        
+        
+        
+    def buildIndexById(self,attr='id'):
+        self._idindex = dict()
+        with stopwatch(f"building index on '{attr}'"):
+            for g in self._geoms:
+                self._idindex[g.attribute(attr)] = g
         
     
     def geoms(self):
@@ -1224,6 +1253,8 @@ def convex (xys, alpha):
     geom = as_polygon(xys)
     return geom.convex_hull
     
+def convexFeatures(xys, alpha):
+    return [Feature(convex(xys, alpha))]
     
 def concave(xy2, alpha):
 
@@ -1231,7 +1262,7 @@ def concave(xy2, alpha):
         concave_hull
     )
     
-    hull = concave_hull(xy2,length_threshold=40)
+    hull = concave_hull(xy2,length_threshold=4)#1/alpha)
     # close the polygon
     hull.append(hull[0])
     #from pygeom.geom import as_polygon
@@ -1572,20 +1603,28 @@ def findFirst(p,w_geom_collection , buffer = 5000, reverse = True, doprojected =
     return None, None
 
 
-def union(inputgeom, overlaygeoms, outputgeom, buffer = 0.005, id_attrib= 'id',migrateAttr = []):
+def union(inputgeom, overlaygeoms, outputgeom, buffer = 0.005, 
+          id_attrib= 'id',migrateAttr = [], 
+          inverse= False):
     '''
     
     select all geometries in input geom that overlap with overlay, in essence a union of 2 geometries.
     If overlay is a point geometry we add a tiny buffer or 'buffer' if not negative
     
-    migrateAttr - if not none/empty, copythe attributes from overlay to input
+    migrateAttr - if not none/empty, copy  the attributes from overlay to input
+    
+    inverse: if true select the geometries that do not match the intersections
     
     '''
+    with stopwatch("opening input file"):
+        ingeoms = Geometries.buildInit(inputgeom)
     
-    ingeoms = Geometries.buildInit(inputgeom)
-    overgeoms = Geometries.buildInit(overlaygeoms)
+    with stopwatch("opening overlays"):
+        overgeoms = Geometries.buildInitMerge(overlaygeoms)
     
-    outputgeoms = ingeoms.clone(True)
+    with stopwatch(f"cloning input file inverted {inverse}"):
+        outputgeoms = ingeoms.clone(not inverse)
+        
     count = 0
     reported = 0
     totallen = len(overgeoms.geoms())
@@ -1603,36 +1642,96 @@ def union(inputgeom, overlaygeoms, outputgeom, buffer = 0.005, id_attrib= 'id',m
     if overgeoms.getMetaSchema('geometry') == 'Point' and buffer > 0:
         # 0.005 deg assume epsg:4326
         print (f"Union with buffer {buffer}")
-        for go in overgeoms.geoms():
-            intersectgeoms = ingeoms.intersections(go.geometry.buffer(buffer))
-            for igeo in intersectgeoms:
-                if not outputgeoms.hasGeomId(igeo.attribute(id_attrib), id_attrib):
-                    clobeigo = igeo.clone()
-                    for a in migrateAttr:
-                        clobeigo.properties[a] = go.attribute(a)
-                    outputgeoms.append(clobeigo)
-            count+=1
-            percent =count/totallen*100
-            if int(percent) % 5 == 0 and reported < int(percent):
-                reported= int(percent)
-                print(f"Tested {int(percent)}% of {totallen}")
-    else:
-        print (f"Union without buffer")
-        for go in overgeoms.geoms():
-            intersectgeoms = ingeoms.intersections(go.geometry)
-            for igeo in intersectgeoms:
-                if not outputgeoms.hasGeomId(igeo.attribute(id_attrib), id_attrib):
-                    clobeigo = igeo.clone()
-                    for a in migrateAttr:
-                        clobeigo.properties[a] = go.attribute(a)
-                    outputgeoms.append(clobeigo)
         
-            count+=1
-            percent =count/totallen*100
-            if int(percent) % 5 == 0  and reported < int(percent):
-                reported= int(percent)
-                print(f"Tested {int(percent)}% of {totallen}")
-
+        if inverse:
+            outputgeoms.buildIndexById(id_attrib)
+            for go in overgeoms.geoms():
+                intersectgeoms = ingeoms.intersections(go.geometry.buffer(buffer))
+                intelen = len(intersectgeoms)
+                percenintervale = 10
+                if intelen > 150000:
+                    percenintervale = 5
+                elif intelen < 20000:
+                    percenintervale = 20
+                    
+                t0 = time.time()
+                for i,igeo in enumerate(intersectgeoms):
+                    outputgeoms.removeGeomById(igeo.attribute(id_attrib), id_attrib)
+                    percent =i/intelen*100
+                    if int(percent) % percenintervale == 0 and reported < int(percent):
+                        t1 = time.time()
+                        reported= int(percent)
+                        print(f"Tested {int(percent)}% of {intelen} intersections at {t1-t0:.1f} sec")
+                        t0 = time.time()
+                        
+                count+=1
+                percent =count/totallen*100
+                if int(percent) % 5 == 0 and reported < int(percent):
+                    reported= int(percent)
+                    print(f"Tested {int(percent)}% of total ngeoms {totallen}")
+            
+        else:
+            t0 = time.time()
+            for go in overgeoms.geoms():
+                intersectgeoms = ingeoms.intersections(go.geometry.buffer(buffer))
+                for igeo in intersectgeoms:
+                    if not outputgeoms.hasGeomId(igeo.attribute(id_attrib), id_attrib):
+                        clobeigo = igeo.clone()
+                        for a in migrateAttr:
+                            clobeigo.properties[a] = go.attribute(a)
+                        outputgeoms.append(clobeigo)
+                count+=1
+                percent =count/totallen*100
+                if int(percent) % 5 == 0 and reported < int(percent):
+                    t1 = time.time()
+                    reported= int(percent)
+                    print(f"Tested {int(percent)}% of {totallen} at {t1-t0:.1f} sec")
+                    t0 = time.time()
+    else:
+        if inverse:
+            print (f"Union without buffer, inverse {inverse}")
+            outputgeoms.buildIndexById(id_attrib)
+            for go in overgeoms.geoms():
+                intersectgeoms = ingeoms.intersections(go.geometry)
+                intelen = len(intersectgeoms)
+                percenintervale = 10
+                if intelen > 150000:
+                    percenintervale = 5
+                elif intelen < 20000:
+                    percenintervale = 20
+                t0 = time.time()
+                for i,igeo in enumerate(intersectgeoms):
+                    outputgeoms.removeGeomById(igeo.attribute(id_attrib), id_attrib)
+                    percent =i/intelen*100
+                    if int(percent) % percenintervale == 0 and reported < int(percent):
+                        t1 = time.time()
+                        reported= int(percent)
+                        print(f"Tested {int(percent)}% of {intelen} intersections at {t1-t0:.1f} sec")
+                        t0 = time.time()
+                count+=1
+                percent =count/totallen*100
+                if int(percent) % 5 == 0  and reported < int(percent):
+                    reported= int(percent)
+                    print(f"Tested {int(percent)}% of {totallen} ")
+        else:
+            print (f"Union without buffer, inverse {inverse}")
+            t0 = time.time()
+            for go in overgeoms.geoms():
+                intersectgeoms = ingeoms.intersections(go.geometry)
+                for igeo in intersectgeoms:
+                    if not outputgeoms.hasGeomId(igeo.attribute(id_attrib), id_attrib):
+                        clobeigo = igeo.clone()
+                        for a in migrateAttr:
+                            clobeigo.properties[a] = go.attribute(a)
+                        outputgeoms.append(clobeigo)
+            
+                count+=1
+                percent =count/totallen*100
+                if int(percent) % 5 == 0  and reported < int(percent):
+                    t1 = time.time()
+                    reported= int(percent)
+                    print(f"Tested {int(percent)}% of {totallen} at {t1-t0:.1f} sec")
+                    t0 = time.time()
     
     outputgeoms.save(outputgeom,migrateAttrTypes)
     
