@@ -3,6 +3,7 @@
 	<name>geom-utils</name>
 	<comment></comment>
 	<projects>
+		<project>pyrest</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>

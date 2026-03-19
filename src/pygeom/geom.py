@@ -237,6 +237,18 @@ def calcSpeedDistance(dt: timedelta, p1: Point,p2:Point):
         return 0. , 0. , 0.
     return tsec , dist, dist / tsec
     
+
+def calcSpeedDirection(u, v ):
+    
+    
+    directionDeg = np.mod((270. - np.atan2(u,v) * 180./np.pi),360.)
+    speed = np.sqrt(np.multiply(u,u) +np.multiply(v,v ))
+    
+    
+    return directionDeg, speed
+
+    
+    
 def point(coords):
     return Point(*coords)
 
