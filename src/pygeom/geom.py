@@ -14,7 +14,8 @@ from random import randrange
 from collections.abc import Iterable
 
 
-from pygeom import logme, _createFeatureShapely, Feature, stopwatch
+from pygeom import logme, _createFeatureShapely, Feature, stopwatch,\
+    FeatureCollection
 
 from datetime import datetime, date
 from _datetime import timedelta
@@ -112,8 +113,38 @@ def geo_json_dump(obj, fp, *args, **kwargs):
     import json
     #from shapely.geometry.geo import mapping
     """Dump shapely geometry object  :obj: to a file :fp:. as string """
+    #if isinstance(obj, Geometries):
+    #    obj = FeatureCollection(obj.features())
+        
+    if not isinstance(obj,FeatureCollection) and isinstance(obj,list):
+        obj = FeatureCollection(obj)
+    
     strobj = json.dumps(_mapping(obj), *args, **kwargs)
     fp.write(strobj)
+    
+    
+def fgb_dump(obj, fp, *args, **kwargs):
+    #from shapely.geometry.geo import mapping
+    """Dump shapely geometry object or pygeom Geometries :obj: to a file :fp:. as string """
+    print(type(obj))
+    if isinstance(obj, Geometries):
+        if isinstance(fp,str):
+            obj.save(fp)
+        else:
+            fpname = fp.name
+            try:
+                fp.close()
+                from pathlib import Path
+                Path(fpname).unlink(missing_ok=True)
+            except:
+                print("failed closing fp")
+            obj.save(fpname)
+    else:
+        if isinstance(obj,str): 
+            fp.write(obj)
+        else:
+            strobj = json.dumps(_mapping(obj), *args, **kwargs)
+            fp.write(strobj)
     
 
 def distance (p1,p2):
@@ -465,13 +496,25 @@ class Geometries(FeaturesStore):
     def setName(self,name):
         self._name = name
         
-    def setMeta(self,metadata):
+    def setMeta(self,metadata,add_properties = {}):
         if not self._meta is None:
             if str(self._meta.get("crs",None)) != str(metadata.get("crs",None)):
                 raise ValueError("Attempting to merge geometries with different projections")
             
         else:
             self._meta = metadata
+            
+        if add_properties:
+            if isinstance(add_properties,dict):
+                for a in add_properties:
+                    if not isinstance(add_properties[a],str):
+                        self._meta['schema']['properties'][a] = add_properties[a].__class__.__name__
+                    else:
+                        self._meta['schema']['properties'][a]='str'
+            else:
+                for a in add_properties:
+                    self._meta['schema']['properties'][a]='str'
+                    
             
     def getMetaSchema(self, key):
         '''
@@ -487,6 +530,14 @@ class Geometries(FeaturesStore):
         if self._meta is None:
             return None
         return self._meta.get("driver",None)
+    
+    def setMetaDriver(self,newdriver):
+        if self._meta is None:
+            return None
+        
+        print(self._meta)
+        self._meta["driver"] = newdriver
+    
     
     def name(self):
         return self._name 
@@ -588,6 +639,10 @@ class Geometries(FeaturesStore):
     def features(self):
         return [ g.feature for g in self._geoms]
     
+    @property
+    def __geo_interface__(self):
+        return FeatureCollection(self.features()).__geo_interface__
+        
     
     def hasGeomId(self,gid,attr='id'):
         #test if the geometry with this id already exists 
@@ -657,14 +712,14 @@ class Geometries(FeaturesStore):
                 geomlayers = fiona.listlayers(geomspath)
                 for l in geomlayers:
                     gg = fiona.open(str(geomspath),layer=l)
-                    geoms.setMeta(gg.profile)
+                    geoms.setMeta(gg.profile,add_properties)
                     for c in iter(gg):
                         props = c["properties"]
                         geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
                 
             else:
                 gg = fiona.open(geomspath)
-                geoms.setMeta(gg.profile)
+                geoms.setMeta(gg.profile,add_properties)
                 for c in iter(gg):
                     props = c["properties"]
                     geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
@@ -796,10 +851,13 @@ class Geometries(FeaturesStore):
         return ",".join(reslist)
     
     
-    def save(self, pathname, additionalProperties = None):
+    def save(self, pathname, additionalProperties = None, driver = None):
         import fiona
         #with fiona.Env():
         profile = {**self._meta}
+        if not driver is None:
+            profile["driver"] = driver
+            
         if additionalProperties:
             if isinstance(additionalProperties,dict):
                 for a in additionalProperties:
