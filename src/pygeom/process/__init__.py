@@ -126,6 +126,10 @@ class LogHandler():
         self._doLogMessage(msg,msg_context,msg_type)    
         
         
+    def error(self,msg,msg_context="Error"):
+        self._doLogMessage(msg,msg_context,msg_type=LogHandler.Error) 
+        
+        
 class LoggingDelegate(LogHandler):
     
     
@@ -153,6 +157,20 @@ class LoggingDelegate(LogHandler):
             self.logger.info(f'{self.emoji4Code(msg_type)} {msg_context} - {msg}')
                         
         
+class LogDummy():
+    
+    def __init__(self):
+        pass
+    
+    def error(self,msg: str):
+        logme(msg)
+    
+    def log(self,msg : str):
+        logme(msg)
+        
+    def exception(self,excp : Exception):
+        raise excp
+    
      
 from threading import Thread
 class QueueManager(Thread):

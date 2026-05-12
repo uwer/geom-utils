@@ -27,10 +27,25 @@ def contain(infile, overlaygeom, outfile):
     
 
 if __name__ == "__main__":
-    
+    import sys
     '''
     run as 
     skimGrid(<INGRID>,[<LANDMASK - to cut>,<offshore boundary - to keep>],<output file>)
     
     '''
-    print("no defs ....")
+    
+    if len(sys.argv) < 4:
+        print("need 4 args 'op' 'infile' 'overlay' 'outfile'")
+        print(" op: skim, trim, contain")
+        sys.exit(1)
+        
+        
+    op = sys.argv[1]
+    if op == 'contain':
+        contain(*sys.argv[2:])
+    elif op == 'trim':
+        trim(*sys.argv[2:])
+    else:
+        skimGrid(*sys.argv[2:])
+        
+    print(" ... finished")

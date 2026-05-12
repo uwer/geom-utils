@@ -732,7 +732,7 @@ def toGeoJson(shapelygeoms : List, props: List):
             } for buffer in shapelygeoms]})
     
     
-    
+"""
 def toGeoPackage(fetcolection , outfile, epsg = '4326'):
     import geopandas as gpd
     import pandas as pd
@@ -750,6 +750,7 @@ def toGeoPackage(fetcolection , outfile, epsg = '4326'):
         
     gdf.to_file(outfile, driver='GPKG',mode='a')
 
+"""
 
 '''
 def appendToGPKG(infile, outfile, layer = None):    
