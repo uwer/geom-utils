@@ -155,7 +155,9 @@ def is_float(obj):
 def isTrue(strval):
     if isinstance(strval,bool):
         return strval
-    return  "1" in strval or "t" in strval.lower()
+    if len(strval) == 0:
+        return False
+    return  "1" == strval[0] or "t" == strval.lower()[0]
 
 
 def roundList(l,rd):

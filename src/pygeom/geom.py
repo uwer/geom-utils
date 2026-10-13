@@ -140,11 +140,19 @@ def fgb_dump(obj, fp, *args, **kwargs):
                 print("failed closing fp")
             obj.save(fpname)
     else:
-        if isinstance(obj,str): 
-            fp.write(obj)
+        if isinstance(fp,str):
+            with open(fp,'w') as ffp:
+                if isinstance(obj,str): 
+                    ffp.write(obj)
+                else:
+                    strobj = json.dumps(_mapping(obj), *args, **kwargs)
+                    ffp.write(strobj)
         else:
-            strobj = json.dumps(_mapping(obj), *args, **kwargs)
-            fp.write(strobj)
+            if isinstance(obj,str): 
+                fp.write(obj)
+            else:
+                strobj = json.dumps(_mapping(obj), *args, **kwargs)
+                fp.write(strobj)
     
 
 def distance (p1,p2):
@@ -504,7 +512,7 @@ class Geometries(FeaturesStore):
                 raise ValueError("Attempting to merge geometries with different projections")
             
         else:
-            self._meta = metadata
+            self._meta = dict(metadata)
             
         if add_properties:
             if isinstance(add_properties,dict):
@@ -517,6 +525,7 @@ class Geometries(FeaturesStore):
                 for a in add_properties:
                     self._meta['schema']['properties'][a]='str'
                     
+        #print(f"set meta data {self._meta}")
             
     def getMetaSchema(self, key):
         '''
@@ -718,25 +727,35 @@ class Geometries(FeaturesStore):
         if not isinstance(geomspath,(list,tuple)):
             geomspath = [geomspath]
         ''' 
-        if isinstance(geomspath,(list,tuple)):
-            gg = fiona.open(geomspath[0],layer=geomspath[1])
-            
-        else:
-            if str(os.path.split(geomspath)[1]).lower() == 'gpkg':
-                geomlayers = fiona.listlayers(geomspath)
-                for l in geomlayers:
-                    gg = fiona.open(str(geomspath),layer=l)
-                    geoms.setMeta(gg.profile,add_properties)
-                    for c in iter(gg):
-                        props = c["properties"]
-                        geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
-                
-            else:
-                gg = fiona.open(geomspath)
+        with fiona.Env():
+            if isinstance(geomspath,(list,tuple)):
+                gg = fiona.open(geomspath[0],layer=geomspath[1])
+                #print(f"profile crs {gg.crs} {gg.crs_wkt} {fiona.__version__}")
+                        
                 geoms.setMeta(gg.profile,add_properties)
                 for c in iter(gg):
                     props = c["properties"]
                     geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
+            else:
+                if str(os.path.split(geomspath)[1]).lower() == 'gpkg':
+                    geomlayers = fiona.listlayers(geomspath)
+                    for l in geomlayers:
+                        gg = fiona.open(str(geomspath),layer=l)
+                        #print(f"profile crs {gg.crs} {gg.crs_wkt} {fiona.__version__}")
+                        
+                        geoms.setMeta(gg.profile,add_properties)
+                        for c in iter(gg):
+                            props = c["properties"]
+                            geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
+                    
+                else:
+                    gg = fiona.open(geomspath)
+                    #print(f"profile crs {gg.crs} {gg.crs_wkt} {fiona.__version__}")
+                    
+                    geoms.setMeta(gg.profile,add_properties)
+                    for c in iter(gg):
+                        props = c["properties"]
+                        geoms._geoms.append(Geom(shape(c["geometry"]),{**props,**add_properties}))
         
     @staticmethod
     def buildInit(geomspath, name = 'Geometries',add_properties = {} ):
@@ -897,6 +916,7 @@ class Geometries(FeaturesStore):
                     profile['schema']['properties'][a]='str'
                     
                     
+        print(f"Saving geometries with {profile}")
         with fiona.open(pathname, "w", **profile) as dst:
             ngeoms = len(self._geoms)
             print(f"Saving nfeatures {ngeoms}")
