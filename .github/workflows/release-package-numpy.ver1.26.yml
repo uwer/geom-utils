@@ -7,6 +7,7 @@ on:
     paths:
       - 'src/**'
       - 'setup-numpy.ver1.26.py'
+      - 'pyproject-numpy.ver1.26.toml'
       - 'requirements-numpy.ver1.26.txt'
       - '.github/workflows/release-package-numpy.ver1.26.yml'
 
@@ -30,10 +31,14 @@ jobs:
     - name: Set release version
       run: |
         echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        
+        # move the specific version implementations to be used
         rm requirements.txt
         rm setup.py
         mv requirements-numpy.ver1.26.txt requirements.txt
         mv setup-numpy.ver1.26.py setup.py
+        rm pyproject.toml 
+        mv pyproject-numpy.ver1.26.toml pyproject.toml
     - name: Install dependencies
       run: |
         echo "release ${{ env.RELEASE_VERSION }}"
