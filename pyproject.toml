@@ -24,10 +24,10 @@ dependencies = [
   "shapely",
         "pyproj",
         "geographiclib"   ,
-        "pandas>=2.3",
-        "numpy",
+        "pandas>=2.3,<3.1",
+        "numpy<2.0",
         "fiona",
-        "concave_hull"
+        "concave_hull"s
 ]
 
 [project.urls]
