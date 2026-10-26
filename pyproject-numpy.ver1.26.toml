@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "pygeom"
+name = "pygeom-numpy-ver1-26"
 version = "0.9.1"
 
 requires-python = ">= 3.10"
